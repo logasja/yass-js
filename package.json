@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/eugeneware/jpeg-js"
+    "url": "https://github.gatech.edu/spud/jpeg-js"
   },
   "keywords": [
     "jpeg",
@@ -23,7 +23,7 @@
   "author": "Eugene Ware <eugene@noblesamurai.com>",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/eugeneware/jpeg-js/issues"
+    "url": "https://github.gatech.edu/spud/jpeg-js/issues"
   },
   "dependencies": {},
   "devDependencies": {
