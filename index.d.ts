@@ -20,7 +20,7 @@ type UintArrRet = RawImageData<Uint8Array>;
 type ImageData = BufferRet | UintArrRet;
 type BufferLike = Buffer | Uint8Array | ArrayLike<number> | Iterable<number> | ArrayBuffer;
 
-export declare function encode(imgData: RawImageData<BufferLike>, quality?: number): BufferRet;
+export declare function encode(imgData: RawImageData<BufferLike>, quality?: number, is_input_yuv?:boolean): BufferRet;
 
 export declare function decode(
   jpegData: BufferLike,
