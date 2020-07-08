@@ -2,6 +2,16 @@ export interface RawImageData<T> {
   width: number;
   height: number;
   data: T;
+  dct_coeffs: {
+    Y: any,
+    U: any,
+    V: any
+  };
+  quant: {
+    Y: any,
+    U: any,
+    V: any
+  }
 }
 
 type BufferRet = RawImageData<Buffer>;
