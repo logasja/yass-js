@@ -2,8 +2,8 @@ export interface RawImageData<T> {
   width: number;
   height: number;
   data: T;
-  dct_coeffs: DCTs;
-  quant: QTs;
+  dct_coeffs?: DCTs;
+  quant?: QTs;
   YCbCr?: YCbCr;
 }
 
