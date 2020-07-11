@@ -8,21 +8,21 @@ export interface RawImageData<T> {
 }
 
 export interface DCTs {
-  Y?: Int32Array[],
-  U?: Int32Array[],
-  V?: Int32Array[]
+  Y?: Uint8Array[],
+  U?: Uint8Array[],
+  V?: Uint8Array[]
 }
 
 export interface QTs {
-  Y?: Int32Array[],
-  U?: Int32Array[],
-  V?: Int32Array[]  
+  Y?: Uint8Array[],
+  U?: Uint8Array[],
+  V?: Uint8Array[]  
 }
 
 export interface YCbCr {
-  Y?: Int32Array[],
-  Cb?: Int32Array[],
-  Cr?: Int32Array[]  
+  Y: Uint8Array[],
+  Cb?: Uint8Array[],
+  Cr?: Uint8Array[]  
 }
 
 type BufferRet = RawImageData<Buffer>;
