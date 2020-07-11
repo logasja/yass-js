@@ -21,8 +21,8 @@ export interface QTs {
 
 export interface YCbCr {
   Y?: Int32Array[],
-  U?: Int32Array[],
-  V?: Int32Array[]  
+  Cb?: Int32Array[],
+  Cr?: Int32Array[]  
 }
 
 type BufferRet = RawImageData<Buffer>;
