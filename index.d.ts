@@ -3,14 +3,14 @@ export interface RawImageData<T> {
   height: number;
   data: T;
   dct_coeffs?: {
-    Y: any,
-    U: any,
-    V: any
+    Y: Int32Array[][] | undefined,
+    U: Int32Array[][] | undefined,
+    V: Int32Array[][] | undefined
   };
   quant?: {
-    Y: any,
-    U: any,
-    V: any
+    Y: Int32Array[] | undefined,
+    U: Int32Array[] | undefined,
+    V: Int32Array[] | undefined
   }
 }
 
