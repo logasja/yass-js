@@ -4,6 +4,7 @@ export interface RawImageData<T> {
   data: T;
   dct_coeffs: DCTs;
   quant: QTs;
+  YCbCr?: YCbCr;
 }
 
 export interface DCTs {
@@ -16,6 +17,12 @@ export interface QTs {
   Y: Int32Array[] | undefined,
   U: Int32Array[] | undefined,
   V: Int32Array[] | undefined  
+}
+
+export interface YCbCr {
+  Y?: Int32Array[][],
+  U?: Int32Array[][],
+  V?: Int32Array[][]  
 }
 
 type BufferRet = RawImageData<Buffer>;
@@ -33,6 +40,7 @@ export declare function decode(
     colorTransform?: boolean;
     formatAsRGBA?: boolean;
     tolerantDecoding?: boolean;
+    withYCbCr?: boolean;
     maxResolutionInMP?: number;
     maxMemoryUsageInMB?: number;
   },
@@ -44,6 +52,7 @@ export declare function decode(
     colorTransform?: boolean;
     formatAsRGBA?: boolean;
     tolerantDecoding?: boolean;
+    withYCbCr?: boolean;
     maxResolutionInMP?: number;
     maxMemoryUsageInMB?: number;
   },
