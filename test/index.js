@@ -205,6 +205,25 @@ it('should be able to decode a JPEG with options', function () {
   assert.ok(rawImageData.data instanceof Uint8Array, 'data is a typed array');
 });
 
+it('should be able to decode a JPEG with YCbCr options', function () {
+
+  var jpegData = fixture('grumpycat.jpg');
+  var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    useTArray: true,
+    colorTransform: true,
+    withYCbCr: true
+  });
+  expect(rawImageData.width).toEqual(320);
+  expect(rawImageData.height).toEqual(180);
+  console.log(rawImageData.YCbCr.Y.length);
+  console.log(rawImageData.YCbCr.Y[0].length);
+  expect(rawImageData.Y.length).to.equal(180);
+  expect(rawImageData.Y.length).to.equal(320);
+  var expected = fixture('grumpycat-nocolortrans.rgba');
+  expect(rawImageData.data).toEqual(new Uint8Array(expected));
+  assert.ok(rawImageData.data instanceof Uint8Array, 'data is a typed array');
+});
+
 it('should be able to decode a JPEG into RGB', function () {
   var jpegData = fixture('grumpycat.jpg');
   var rawImageData = jpeg.decode(new Uint8Array(jpegData), {useTArray: true, formatAsRGBA: false});
