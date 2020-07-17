@@ -3,20 +3,13 @@ export interface RawImageData<T> {
   height: number;
   data: T;
   dct_coeffs?: DCTs;
-  quant?: QTs;
   YCbCr?: YCbCr;
 }
 
 export interface DCTs {
-  Y?: Uint8Array[],
-  U?: Uint8Array[],
-  V?: Uint8Array[]
-}
-
-export interface QTs {
-  Y?: Uint8Array[],
-  U?: Uint8Array[],
-  V?: Uint8Array[]  
+  Y?: Float32Array[],
+  U?: Float32Array[],
+  V?: Float32Array[]
 }
 
 export interface YCbCr {
@@ -31,7 +24,7 @@ type UintArrRet = RawImageData<Uint8Array>;
 type ImageData = BufferRet | UintArrRet;
 type BufferLike = Buffer | Uint8Array | ArrayLike<number> | Iterable<number> | ArrayBuffer;
 
-export declare function encode(imgData: RawImageData<BufferLike>, quality?: number, nDCT?: DCTs, is_input_yuv?:boolean): BufferRet;
+export declare function encode(imgData: RawImageData<BufferLike>, quality?: number, ycbcr?:YCbCr): BufferRet;
 
 export declare function decode(
   jpegData: BufferLike,
