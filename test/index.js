@@ -2,6 +2,7 @@ var fs = require('fs'),
   path = require('path'),
   assert = require('assert'),
   jpeg = require('..');
+const { fail } = require('assert');
 
 function fixture(name) {
   return fs.readFileSync(path.join(__dirname, 'fixtures', name));
@@ -230,7 +231,17 @@ it('should be able to encode a JPEG with YCbCr input', function () {
   expect(rawImageData.YCbCr.Y.length).toEqual(180);
   expect(rawImageData.YCbCr.Y[0].length).toEqual(320);
 
-  
+  fail();
+});
+
+it('should be able to decode a JPEG with DCT options', function () {
+
+  var jpegData = fixture('grumpycat.jpg');
+  var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    useTArray: true,
+    withDCTs: true
+  });
+  expect(rawImageData.DCT.Y[0][0].length).toEqual(64);
 });
 
 it('should be able to decode a JPEG into RGB', function () {

@@ -2,14 +2,14 @@ export interface RawImageData<T> {
   width: number;
   height: number;
   data: T;
-  dct_coeffs?: DCTs;
+  DCT?: DCTs;
   YCbCr?: YCbCr;
 }
 
 export interface DCTs {
-  Y?: Float32Array[],
-  U?: Float32Array[],
-  V?: Float32Array[]
+  Y: Int32Array[][],
+  U?: Int32Array[][],
+  V?: Int32Array[][]
 }
 
 export interface YCbCr {
@@ -34,6 +34,7 @@ export declare function decode(
     formatAsRGBA?: boolean;
     tolerantDecoding?: boolean;
     withYCbCr?: boolean;
+    withDCTs?: boolean;
     maxResolutionInMP?: number;
     maxMemoryUsageInMB?: number;
   },
@@ -46,6 +47,7 @@ export declare function decode(
     formatAsRGBA?: boolean;
     tolerantDecoding?: boolean;
     withYCbCr?: boolean;
+    withDCTs?: boolean;
     maxResolutionInMP?: number;
     maxMemoryUsageInMB?: number;
   },
