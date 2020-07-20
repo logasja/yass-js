@@ -4,8 +4,8 @@ export interface RawImageData<T> {
   data: T;
   DCT?: DCTs;
   YCbCr?: YCbCr;
-  exif?: any;
-  comments?: any;
+  exif?: Uint8Array;
+  comments?: string;
 }
 
 export interface DCTs {

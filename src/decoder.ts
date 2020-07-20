@@ -16,7 +16,7 @@
    limitations under the License.
 */
 
-import { RawImageData, BufferLike, DecodePrefs } from './types';
+import { RawImageData, BufferLike, DecodePrefs, DCTs, YCbCr } from './types';
 
 // - The JPEG specification can be found in the ITU CCITT Recommendation T.81
 //   (www.w3.org/Graphics/JPEG/itu-t81.pdf)
@@ -26,9 +26,64 @@ import { RawImageData, BufferLike, DecodePrefs } from './types';
 //   in PostScript Level 2, Technical Note #5116
 //   (partners.adobe.com/public/developer/en/ps/sdk/5116.DCT_Filter.pdf)
 
-interface HuffmanTableValues {
-  children: any[];
+interface HuffmanTableValue {
+  children: any;
   index: number;
+}
+
+interface ComponentsValue {
+  lines: Uint8Array[];
+  scaleX: number;
+  scaleY: number;
+}
+
+interface Adobe {
+  version: number;
+  flags0: number;
+  flags1: number;
+  transformCode: number;
+}
+
+interface JFIF {
+  version: { major: number; minor: number };
+  densityUnits: number;
+  xDensity: number;
+  yDensity: number;
+  thumbWidth: number;
+  thumbHeight: number;
+  thumbData: Uint8Array;
+}
+
+interface ImageFrameComponent {
+  h: number;
+  v: number;
+  quantizationIdx: number;
+  blocksPerLine?: number;
+  blocksPerColumn?: number;
+  blocks?: Int32Array[][];
+  htDC?: Array<any>;
+  htAC?: Array<any>;
+  qT?: Int32Array;
+  pred?: number;
+}
+
+interface ImageFrameComponents {
+  [index: number]: ImageFrameComponent;
+  length: number;
+}
+
+interface ImageFrame {
+  extended?: boolean;
+  progressive?: boolean;
+  precision?: number;
+  scanLines?: number;
+  samplesPerLine?: number;
+  components?: ImageFrameComponents;
+  componentsOrder?: number[];
+  maxH?: number;
+  maxV?: number;
+  mcusPerLine?: number;
+  mcusPerColumn?: number;
 }
 
 class JpegConstants {
@@ -68,30 +123,42 @@ class JpegImage {
     // Until then, treating as singleton limit is fine.
     this.resetMaxMemoryUsage(this.opts.maxMemoryUsageInMB! * 1024 * 1024);
     this.parse(data);
+    this.height = 0;
+    this.width = 0;
+    this.comments = [];
+    this.components = [];
   }
 
   protected readonly opts: DecodePrefs;
   height: number;
   width: number;
-  comments: any;
-  exif: any;
+  comments: string[];
+  components: ComponentsValue[];
+
+  // Optional variables
+  jfif?: JFIF;
+  exif?: Uint8Array;
+  adobe?: Adobe;
+  DCTs?: DCTs;
+  YCbCr?: YCbCr;
 
   private static buildHuffmanTable(
     codeLengths: Uint8Array,
     values: Uint8Array
-  ) {
+  ): any[] {
     var k = 0,
-      code: HuffmanTableValues[] = [],
+      code: HuffmanTableValue[] = [],
       i,
       j,
       length = 16;
 
+    // Getting the last index before zero filled
     while (length > 0 && !codeLengths[length - 1]) length--;
 
     code.push({ children: [], index: 0 });
 
     var p = code[0],
-      q;
+      q: HuffmanTableValue;
     for (i = 0; i < length; i++) {
       for (j = 0; j < codeLengths[i]; j++) {
         p = code.pop()!;
@@ -123,20 +190,20 @@ class JpegImage {
   private static decodeScan(
     data: Uint8Array,
     offset: number,
-    frame,
-    components,
-    resetInterval,
-    spectralStart,
-    spectralEnd,
-    successivePrev,
-    successive,
-    opts
+    frame: ImageFrame,
+    components: ImageFrameComponents,
+    resetInterval: number,
+    spectralStart: number,
+    spectralEnd: number,
+    successivePrev: number,
+    successive: number,
+    opts: DecodePrefs
   ) {
     var precision = frame.precision;
     var samplesPerLine = frame.samplesPerLine;
     var scanLines = frame.scanLines;
-    var mcusPerLine = frame.mcusPerLine;
-    var progressive = frame.progressive;
+    var mcusPerLine = frame.mcusPerLine!;
+    var progressive = frame.progressive!;
     var maxH = frame.maxH,
       maxV = frame.maxV;
 
@@ -161,7 +228,7 @@ class JpegImage {
       bitsCount = 7;
       return bitsData >>> 7;
     }
-    function decodeHuffman(tree) {
+    function decodeHuffman(tree: Array<any>): number {
       var node = tree,
         bit;
       while ((bit = readBit()) !== null) {
@@ -170,30 +237,30 @@ class JpegImage {
         if (typeof node !== 'object')
           throw new Error('invalid huffman sequence');
       }
-      return null;
+      return 0;
     }
-    function receive(length) {
+    function receive(length: number): number {
       var n = 0;
       while (length > 0) {
         var bit = readBit();
-        if (bit === null) return;
+        if (bit === null) return 0;
         n = (n << 1) | bit;
         length--;
       }
       return n;
     }
-    function receiveAndExtend(length) {
+    function receiveAndExtend(length: number) {
       var n = receive(length);
       if (n >= 1 << (length - 1)) return n;
       return n + (-1 << length) + 1;
     }
-    function decodeBaseline(component, zz) {
-      var t = decodeHuffman(component.huffmanTableDC);
+    function decodeBaseline(component: ImageFrameComponent, zz: Int32Array) {
+      var t = decodeHuffman(component.htDC!);
       var diff = t === 0 ? 0 : receiveAndExtend(t);
-      zz[0] = component.pred += diff;
+      zz[0] = component.pred! += diff;
       var k = 1;
       while (k < 64) {
-        var rs = decodeHuffman(component.huffmanTableAC);
+        var rs = decodeHuffman(component.htAC!);
         var s = rs & 15,
           r = rs >> 4;
         if (s === 0) {
@@ -207,16 +274,19 @@ class JpegImage {
         k++;
       }
     }
-    function decodeDCFirst(component, zz) {
-      var t = decodeHuffman(component.huffmanTableDC);
+    function decodeDCFirst(component: ImageFrameComponent, zz: Int32Array) {
+      var t = decodeHuffman(component.htDC!);
       var diff = t === 0 ? 0 : receiveAndExtend(t) << successive;
-      zz[0] = component.pred += diff;
+      zz[0] = component.pred! += diff;
     }
-    function decodeDCSuccessive(component, zz) {
+    function decodeDCSuccessive(
+      component: ImageFrameComponent,
+      zz: Int32Array
+    ) {
       zz[0] |= readBit() << successive;
     }
     var eobrun = 0;
-    function decodeACFirst(component, zz) {
+    function decodeACFirst(component: ImageFrameComponent, zz: Int32Array) {
       if (eobrun > 0) {
         eobrun--;
         return;
@@ -224,7 +294,7 @@ class JpegImage {
       var k = spectralStart,
         e = spectralEnd;
       while (k <= e) {
-        var rs = decodeHuffman(component.huffmanTableAC);
+        var rs = decodeHuffman(component.htAC!);
         var s = rs & 15,
           r = rs >> 4;
         if (s === 0) {
@@ -242,8 +312,11 @@ class JpegImage {
       }
     }
     var successiveACState = 0,
-      successiveACNextValue;
-    function decodeACSuccessive(component, zz) {
+      successiveACNextValue: number;
+    function decodeACSuccessive(
+      component: ImageFrameComponent,
+      zz: Int32Array
+    ) {
       var k = spectralStart,
         e = spectralEnd,
         r = 0;
@@ -252,7 +325,7 @@ class JpegImage {
         var direction = zz[z] < 0 ? -1 : 1;
         switch (successiveACState) {
           case 0: // initial state
-            var rs = decodeHuffman(component.huffmanTableAC);
+            var rs = decodeHuffman(component.htAC!);
             var s = rs & 15,
               r = rs >> 4;
             if (s === 0) {
@@ -295,23 +368,33 @@ class JpegImage {
         if (eobrun === 0) successiveACState = 0;
       }
     }
-    function decodeMcu(component, decode, mcu, row, col) {
+    function decodeMcu(
+      component: ImageFrameComponent,
+      decode: Function,
+      mcu: number,
+      row: number,
+      col: number
+    ) {
       var mcuRow = (mcu / mcusPerLine) | 0;
       var mcuCol = mcu % mcusPerLine;
       var blockRow = mcuRow * component.v + row;
       var blockCol = mcuCol * component.h + col;
       // If the block is missing and we're in tolerant mode, just skip it.
-      if (component.blocks[blockRow] === undefined && opts.tolerantDecoding)
+      if (component.blocks![blockRow] === undefined && opts.tolerantDecoding)
         return;
-      decode(component, component.blocks[blockRow][blockCol]);
+      decode(component, component.blocks![blockRow][blockCol]);
     }
-    function decodeBlock(component, decode, mcu) {
-      var blockRow = (mcu / component.blocksPerLine) | 0;
-      var blockCol = mcu % component.blocksPerLine;
+    function decodeBlock(
+      component: ImageFrameComponent,
+      decode: Function,
+      mcu: number
+    ) {
+      var blockRow = (mcu / component.blocksPerLine!) | 0;
+      var blockCol = mcu % component.blocksPerLine!;
       // If the block is missing and we're in tolerant mode, just skip it.
-      if (component.blocks[blockRow] === undefined && opts.tolerantDecoding)
+      if (component.blocks![blockRow] === undefined && opts.tolerantDecoding)
         return;
-      decode(component, component.blocks[blockRow][blockCol]);
+      decode(component, component.blocks![blockRow][blockCol]);
     }
 
     var componentsLength = components.length;
@@ -329,9 +412,10 @@ class JpegImage {
       marker;
     var mcuExpected;
     if (componentsLength == 1) {
-      mcuExpected = components[0].blocksPerLine * components[0].blocksPerColumn;
+      mcuExpected =
+        components[0].blocksPerLine! * components[0].blocksPerColumn!;
     } else {
-      mcuExpected = mcusPerLine * frame.mcusPerColumn;
+      mcuExpected = mcusPerLine * frame.mcusPerColumn!;
     }
     if (!resetInterval) resetInterval = mcuExpected;
 
@@ -394,9 +478,9 @@ class JpegImage {
     return offset - startOffset;
   }
 
-  private buildComponentData(component): Uint8Array[] {
-    var blocksPerLine = component.blocksPerLine;
-    var blocksPerColumn = component.blocksPerColumn;
+  private buildComponentData(component: ImageFrameComponent): Uint8Array[] {
+    var blocksPerLine = component.blocksPerLine!;
+    var blocksPerColumn = component.blocksPerColumn!;
     var samplesPerLine = blocksPerLine << 3;
     // Only 1 used per invocation of this function and garbage collected after invocation, so no need to account for its memory footprint.
     var R = new Int32Array(64),
@@ -407,8 +491,12 @@ class JpegImage {
     //   "Practical Fast 1-D DCT Algorithms with 11 Multiplications",
     //   IEEE Intl. Conf. on Acoustics, Speech & Signal Processing, 1989,
     //   988-991.
-    function quantizeAndInverse(zz, dataOut, dataIn) {
-      var qt = component.quantizationTable;
+    function quantizeAndInverse(
+      zz: Int32Array,
+      dataOut: Uint8Array,
+      dataIn: Int32Array
+    ) {
+      var qt = component.qT!;
       var v0, v1, v2, v3, v4, v5, v6, v7, t;
       var p = dataIn;
       var i;
@@ -612,7 +700,7 @@ class JpegImage {
       var scanLine = blockRow << 3;
       for (i = 0; i < 8; i++) lines.push(new Uint8Array(samplesPerLine));
       for (var blockCol = 0; blockCol < blocksPerLine; blockCol++) {
-        quantizeAndInverse(component.blocks[blockRow][blockCol], r, R);
+        quantizeAndInverse(component.blocks![blockRow][blockCol], r, R);
 
         var offset = 0,
           sample = blockCol << 3;
@@ -638,83 +726,92 @@ class JpegImage {
   //   xhr.send(null);
   // };
 
+  private static readUint16(
+    data: Uint8Array,
+    offset: number
+  ): [number, number] {
+    var value = (data[offset] << 8) | data[offset + 1];
+    offset += 2;
+    return [value, offset];
+  }
+
+  private static readDataBlock(
+    data: Uint8Array,
+    offset: number
+  ): [Uint8Array, number] {
+    var [length, offset] = JpegImage.readUint16(data, offset);
+    var array = data.subarray(offset, offset + length - 2);
+    offset += array.length;
+    return [array, offset];
+  }
+
+  private prepareComponents(frame: ImageFrame) {
+    var maxH = 0,
+      maxV = 0;
+    var component, componentId;
+    for (componentId in frame.components) {
+      if (frame.components!.hasOwnProperty(componentId)) {
+        component = frame.components![Number.parseInt(componentId)];
+        if (maxH < component.h) maxH = component.h;
+        if (maxV < component.v) maxV = component.v;
+      }
+    }
+    var mcusPerLine = Math.ceil(frame.samplesPerLine! / 8 / maxH);
+    var mcusPerColumn = Math.ceil(frame.scanLines! / 8 / maxV);
+    for (componentId in frame.components!) {
+      if (frame.components!.hasOwnProperty(componentId)) {
+        component = frame.components![componentId];
+        var blocksPerLine = Math.ceil(
+          (Math.ceil(frame.samplesPerLine! / 8) * component.h) / maxH
+        );
+        var blocksPerColumn = Math.ceil(
+          (Math.ceil(frame.scanLines! / 8) * component.v) / maxV
+        );
+        var blocksPerLineForMcu = mcusPerLine * component.h;
+        var blocksPerColumnForMcu = mcusPerColumn * component.v;
+        var blocksToAllocate = blocksPerColumnForMcu * blocksPerLineForMcu;
+        var blocks = [];
+
+        // Each block is a Int32Array of length 64 (4 x 64 = 256 bytes)
+        this.requestMemoryAllocation(blocksToAllocate * 256);
+
+        for (var i = 0; i < blocksPerColumnForMcu; i++) {
+          var row = [];
+          for (var j = 0; j < blocksPerLineForMcu; j++)
+            row.push(new Int32Array(64));
+          blocks.push(row);
+        }
+        component.blocksPerLine = blocksPerLine;
+        component.blocksPerColumn = blocksPerColumn;
+        component.blocks = blocks;
+      }
+    }
+    frame.maxH = maxH;
+    frame.maxV = maxV;
+    frame.mcusPerLine = mcusPerLine;
+    frame.mcusPerColumn = mcusPerColumn;
+  }
+
   private parse(data: Uint8Array) {
-    var maxResolutionInPixels = this.opts.maxResolutionInMP * 1000 * 1000;
+    var maxResolutionInPixels = this.opts.maxResolutionInMP! * 1000 * 1000;
     var offset = 0,
-      length = data.length;
-    function readUint16() {
-      var value = (data[offset] << 8) | data[offset + 1];
-      offset += 2;
-      return value;
-    }
-    function readDataBlock() {
-      var length = readUint16();
-      var array = data.subarray(offset, offset + length - 2);
-      offset += array.length;
-      return array;
-    }
-    function prepareComponents(frame) {
-      var maxH = 0,
-        maxV = 0;
-      var component, componentId;
-      for (componentId in frame.components) {
-        if (frame.components.hasOwnProperty(componentId)) {
-          component = frame.components[componentId];
-          if (maxH < component.h) maxH = component.h;
-          if (maxV < component.v) maxV = component.v;
-        }
-      }
-      var mcusPerLine = Math.ceil(frame.samplesPerLine / 8 / maxH);
-      var mcusPerColumn = Math.ceil(frame.scanLines / 8 / maxV);
-      for (componentId in frame.components) {
-        if (frame.components.hasOwnProperty(componentId)) {
-          component = frame.components[componentId];
-          var blocksPerLine = Math.ceil(
-            (Math.ceil(frame.samplesPerLine / 8) * component.h) / maxH
-          );
-          var blocksPerColumn = Math.ceil(
-            (Math.ceil(frame.scanLines / 8) * component.v) / maxV
-          );
-          var blocksPerLineForMcu = mcusPerLine * component.h;
-          var blocksPerColumnForMcu = mcusPerColumn * component.v;
-          var blocksToAllocate = blocksPerColumnForMcu * blocksPerLineForMcu;
-          var blocks = [];
-
-          // Each block is a Int32Array of length 64 (4 x 64 = 256 bytes)
-          requestMemoryAllocation(blocksToAllocate * 256);
-
-          for (var i = 0; i < blocksPerColumnForMcu; i++) {
-            var row = [];
-            for (var j = 0; j < blocksPerLineForMcu; j++)
-              row.push(new Int32Array(64));
-            blocks.push(row);
-          }
-          component.blocksPerLine = blocksPerLine;
-          component.blocksPerColumn = blocksPerColumn;
-          component.blocks = blocks;
-        }
-      }
-      frame.maxH = maxH;
-      frame.maxV = maxV;
-      frame.mcusPerLine = mcusPerLine;
-      frame.mcusPerColumn = mcusPerColumn;
-    }
-    var jfif = null;
+      length = data.length,
+      fileMarker = 0;
     var adobe = null;
-    var pixels = null;
-    var frame, resetInterval;
+    var frame: ImageFrame = {},
+      resetInterval = 0;
     var quantizationTables = [],
-      frames = [];
-    var huffmanTablesAC = [],
-      huffmanTablesDC = [];
-    var fileMarker = readUint16();
+      frames: ImageFrame[] = [];
+    var huffmanTablesAC: any[] = [],
+      huffmanTablesDC: any[] = [];
+    [fileMarker, offset] = JpegImage.readUint16(data, offset);
     this.comments = [];
     if (fileMarker != 0xffd8) {
       // SOI (Start of Image)
       throw new Error('SOI not found');
     }
 
-    fileMarker = readUint16();
+    [fileMarker, offset] = JpegImage.readUint16(data, offset);
     while (fileMarker != 0xffd9) {
       // EOI (End of image)
       var i, j, l;
@@ -738,10 +835,10 @@ class JpegImage {
         case 0xffee: // APP14
         case 0xffef: // APP15
         case 0xfffe: // COM (Comment)
-          var appData = readDataBlock();
+          var [appData, offset] = JpegImage.readDataBlock(data, offset);
 
           if (fileMarker === 0xfffe) {
-            var comment = String.fromCharCode.apply(null, appData);
+            var comment = String.fromCharCode.apply(null, Array.from(appData));
             this.comments.push(comment);
           }
 
@@ -754,7 +851,7 @@ class JpegImage {
               appData[4] === 0
             ) {
               // 'JFIF\x00'
-              jfif = {
+              this.jfif = {
                 version: { major: appData[5], minor: appData[6] },
                 densityUnits: appData[7],
                 xDensity: (appData[8] << 8) | appData[9],
@@ -778,7 +875,7 @@ class JpegImage {
               appData[4] === 0
             ) {
               // 'EXIF\x00'
-              this.exifBuffer = appData.subarray(5, appData.length);
+              this.exif = appData.subarray(5, appData.length);
             }
           }
 
@@ -792,7 +889,7 @@ class JpegImage {
               appData[5] === 0
             ) {
               // 'Adobe\x00'
-              adobe = {
+              this.adobe = {
                 version: appData[6],
                 flags0: (appData[7] << 8) | appData[8],
                 flags1: (appData[9] << 8) | appData[10],
@@ -803,11 +900,14 @@ class JpegImage {
           break;
 
         case 0xffdb: // DQT (Define Quantization Tables)
-          var quantizationTablesLength = readUint16();
+          var [quantizationTablesLength, offset] = JpegImage.readUint16(
+            data,
+            offset
+          );
           var quantizationTablesEnd = quantizationTablesLength + offset - 2;
           while (offset < quantizationTablesEnd) {
             var quantizationTableSpec = data[offset++];
-            requestMemoryAllocation(64 * 4);
+            this.requestMemoryAllocation(64 * 4);
             var tableData = new Int32Array(64);
             if (quantizationTableSpec >> 4 === 0) {
               // 8 bit values
@@ -819,7 +919,7 @@ class JpegImage {
               //16 bit
               for (j = 0; j < 64; j++) {
                 var z = JpegConstants.dctZigZag[j];
-                tableData[z] = readUint16();
+                [tableData[z], offset] = JpegImage.readUint16(data, offset);
               }
             } else throw new Error('DQT: invalid table spec');
             quantizationTables[quantizationTableSpec & 15] = tableData;
@@ -829,14 +929,15 @@ class JpegImage {
         case 0xffc0: // SOF0 (Start of Frame, Baseline DCT)
         case 0xffc1: // SOF1 (Start of Frame, Extended DCT)
         case 0xffc2: // SOF2 (Start of Frame, Progressive DCT)
-          readUint16(); // skip data length
-          frame = {};
+          [, offset] = JpegImage.readUint16(data, offset); // skip data length
           frame.extended = fileMarker === 0xffc1;
           frame.progressive = fileMarker === 0xffc2;
           frame.precision = data[offset++];
-          frame.scanLines = readUint16();
-          frame.samplesPerLine = readUint16();
-          frame.components = {};
+          [frame.scanLines, offset] = JpegImage.readUint16(data, offset);
+          [frame.samplesPerLine, offset] = JpegImage.readUint16(data, offset);
+          frame.components = {
+            length: 0,
+          };
           frame.componentsOrder = [];
 
           var pixelsInFrame = frame.scanLines * frame.samplesPerLine;
@@ -864,14 +965,15 @@ class JpegImage {
               v: v,
               quantizationIdx: qId,
             };
+            frame.components.length += 1;
             offset += 3;
           }
-          prepareComponents(frame);
+          this.prepareComponents(frame);
           frames.push(frame);
           break;
 
         case 0xffc4: // DHT (Define Huffman Tables)
-          var huffmanLength = readUint16();
+          var [huffmanLength, offset] = JpegImage.readUint16(data, offset);
           for (i = 2; i < huffmanLength; ) {
             var huffmanTableSpec = data[offset++];
             var codeLengths = new Uint8Array(16);
@@ -879,7 +981,7 @@ class JpegImage {
             for (j = 0; j < 16; j++, offset++) {
               codeLengthSum += codeLengths[j] = data[offset];
             }
-            requestMemoryAllocation(16 + codeLengthSum);
+            this.requestMemoryAllocation(16 + codeLengthSum);
             var huffmanValues = new Uint8Array(codeLengthSum);
             for (j = 0; j < codeLengthSum; j++, offset++)
               huffmanValues[j] = data[offset];
@@ -892,30 +994,30 @@ class JpegImage {
           break;
 
         case 0xffdd: // DRI (Define Restart Interval)
-          readUint16(); // skip data length
-          resetInterval = readUint16();
+          [, offset] = JpegImage.readUint16(data, offset); // skip data length
+          [resetInterval, offset] = JpegImage.readUint16(data, offset);
           break;
 
         case 0xffda: // SOS (Start of Scan)
-          var scanLength = readUint16();
+          var [scanLength, offset] = JpegImage.readUint16(data, offset);
           var selectorsCount = data[offset++];
-          var components = [],
-            component;
+          var imageFramesComponents: ImageFrameComponent[] = [],
+            imageFrameComponent: ImageFrameComponent;
           for (i = 0; i < selectorsCount; i++) {
-            component = frame.components[data[offset++]];
+            imageFrameComponent = frame.components![data[offset++]];
             var tableSpec = data[offset++];
-            component.huffmanTableDC = huffmanTablesDC[tableSpec >> 4];
-            component.huffmanTableAC = huffmanTablesAC[tableSpec & 15];
-            components.push(component);
+            imageFrameComponent.htDC = huffmanTablesDC[tableSpec >> 4];
+            imageFrameComponent.htAC = huffmanTablesAC[tableSpec & 15];
+            imageFramesComponents.push(imageFrameComponent);
           }
           var spectralStart = data[offset++];
           var spectralEnd = data[offset++];
           var successiveApproximation = data[offset++];
-          var processed = decodeScan(
+          var processed = JpegImage.decodeScan(
             data,
             offset,
             frame,
-            components,
+            imageFramesComponents,
             resetInterval,
             spectralStart,
             spectralEnd,
@@ -946,39 +1048,41 @@ class JpegImage {
           }
           throw new Error('unknown JPEG marker ' + fileMarker.toString(16));
       }
-      fileMarker = readUint16();
+      [fileMarker, offset] = JpegImage.readUint16(data, offset);
     }
     if (frames.length != 1)
       throw new Error('only single frame JPEGs supported');
 
     // set each frame's components quantization table
-    for (var i = 0; i < frames.length; i++) {
-      var cp = frames[i].components;
-      for (var j in cp) {
-        cp[j].quantizationTable = quantizationTables[cp[j].quantizationIdx];
+    for (i = 0; i < frames.length; i++) {
+      var cp = frames[i].components!;
+      for (j in cp) {
+        cp[j].qT = quantizationTables[cp[j].quantizationIdx];
         delete cp[j].quantizationIdx;
       }
     }
 
-    this.width = frame.samplesPerLine;
-    this.height = frame.scanLines;
-    this.jfif = jfif;
-    this.adobe = adobe;
+    this.width = frame.samplesPerLine!;
+    this.height = frame.scanLines!;
     this.components = [];
-    for (var i = 0; i < frame.componentsOrder.length; i++) {
-      var component = frame.components[frame.componentsOrder[i]];
+    for (i = 0; i < frame.componentsOrder!.length; i++) {
+      var imageFrameComponent = frame.components![frame.componentsOrder![i]];
       this.components.push({
-        lines: buildComponentData(frame, component),
-        scaleX: component.h / frame.maxH,
-        scaleY: component.v / frame.maxV,
+        lines: this.buildComponentData(imageFrameComponent),
+        scaleX: imageFrameComponent.h / frame.maxH!,
+        scaleY: imageFrameComponent.v / frame.maxV!,
       });
     }
     //fetch wanted data
     if (this.opts.withDCTs) {
-      this.DCT = {
-        Y: components[0] ? components[0].blocks : undefined, // Y channel dct coeffs
-        U: components[1] ? components[1].blocks : undefined, // U channel dct coeffs
-        V: components[2] ? components[2].blocks : undefined, // V channel dct coeffs
+      this.DCTs = {
+        Y: imageFramesComponents![0].blocks!, // Y channel dct coeffs
+        U: imageFramesComponents![1]
+          ? imageFramesComponents![1].blocks
+          : undefined, // U channel dct coeffs
+        V: imageFramesComponents![2]
+          ? imageFramesComponents![2].blocks
+          : undefined, // V channel dct coeffs
       };
     }
   }
@@ -994,10 +1098,10 @@ class JpegImage {
     var Y, Cb, Cr, K, C, M, Ye, R, G, B;
     var colorTransform;
     var dataLength = width * height * this.components.length;
-    requestMemoryAllocation(dataLength);
+    this.requestMemoryAllocation(dataLength);
     var data = new Uint8Array(dataLength);
     if (this.opts.withYCbCr) {
-      requestMemoryAllocation(width * height * this.components.length);
+      this.requestMemoryAllocation(width * height * this.components.length);
       this.YCbCr = {
         Y: new Array(height).fill(new Uint8Array(width)),
         Cb:
@@ -1018,7 +1122,7 @@ class JpegImage {
             component1.lines[0 | (y * component1.scaleY * scaleY)];
           for (x = 0; x < width; x++) {
             Y = component1Line[0 | (x * component1.scaleX * scaleX)];
-            this.opts.withYCbCr ? (this.YCbCr.Y[y][x] = Y) : null;
+            this.opts.withYCbCr ? (this.YCbCr!.Y[y][x] = Y) : null;
             data[offset++] = Y;
           }
         }
@@ -1034,10 +1138,10 @@ class JpegImage {
             component2.lines[0 | (y * component2.scaleY * scaleY)];
           for (x = 0; x < width; x++) {
             Y = component1Line[0 | (x * component1.scaleX * scaleX)];
-            this.opts.withYCbCr ? (this.YCbCr.Y[y][x] = Y) : null;
+            this.opts.withYCbCr ? (this.YCbCr!.Y[y][x] = Y) : null;
             data[offset++] = Y;
             Y = component2Line[0 | (x * component2.scaleX * scaleX)];
-            this.opts.withYCbCr ? (this.YCbCr.Cb[y][x] = Y) : null;
+            this.opts.withYCbCr ? (this.YCbCr!.Cb![y][x] = Y) : null;
             data[offset++] = Y;
           }
         }
@@ -1063,18 +1167,18 @@ class JpegImage {
           for (x = 0; x < width; x++) {
             if (!colorTransform) {
               R = component1Line[0 | (x * component1.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Y[y][x] = R) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Y[y][x] = R) : null;
               G = component2Line[0 | (x * component2.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Cb[y][x] = G) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Cb![y][x] = G) : null;
               B = component3Line[0 | (x * component3.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Cr[y][x] = B) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Cr![y][x] = B) : null;
             } else {
               Y = component1Line[0 | (x * component1.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Y[y][x] = Y) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Y[y][x] = Y) : null;
               Cb = component2Line[0 | (x * component2.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Cb[y][x] = Cb) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Cb![y][x] = Cb) : null;
               Cr = component3Line[0 | (x * component3.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Cr[y][x] = Cr) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Cr![y][x] = Cr) : null;
 
               R = clampTo8bit(Y + 1.402 * (Cr - 128));
               G = clampTo8bit(
@@ -1120,11 +1224,11 @@ class JpegImage {
               K = component4Line[0 | (x * component4.scaleX * scaleX)];
             } else {
               Y = component1Line[0 | (x * component1.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Y[y][x] = Y) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Y[y][x] = Y) : null;
               Cb = component2Line[0 | (x * component2.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Cb[y][x] = Cb) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Cb![y][x] = Cb) : null;
               Cr = component3Line[0 | (x * component3.scaleX * scaleX)];
-              this.opts.withYCbCr ? (this.YCbCr.Cr[y][x] = Cr) : null;
+              this.opts.withYCbCr ? (this.YCbCr!.Cr![y][x] = Cr) : null;
               K = component4Line[0 | (x * component4.scaleX * scaleX)];
 
               C = 255 - clampTo8bit(Y + 1.402 * (Cr - 128));
@@ -1148,17 +1252,21 @@ class JpegImage {
     return data;
   }
 
-  copyToImageData(imageData, formatAsRGBA: boolean) {
+  static copyToImageData(
+    decoder: JpegImage,
+    imageData: RawImageData<Buffer | Uint8Array>
+  ) {
     var width = imageData.width,
       height = imageData.height;
     var imageDataArray = imageData.data;
-    var data = this.getData(width, height);
+    var data = decoder.getData(width, height);
     var i = 0,
       j = 0,
       x,
       y;
     var Y, K, C, M, R, G, B;
-    switch (this.components.length) {
+
+    switch (decoder.components.length) {
       case 1:
         for (y = 0; y < height; y++) {
           for (x = 0; x < width; x++) {
@@ -1167,7 +1275,7 @@ class JpegImage {
             imageDataArray[j++] = Y;
             imageDataArray[j++] = Y;
             imageDataArray[j++] = Y;
-            if (formatAsRGBA) {
+            if (decoder.opts.formatAsRGBA) {
               imageDataArray[j++] = 255;
             }
           }
@@ -1183,7 +1291,7 @@ class JpegImage {
             imageDataArray[j++] = R;
             imageDataArray[j++] = G;
             imageDataArray[j++] = B;
-            if (formatAsRGBA) {
+            if (decoder.opts.formatAsRGBA) {
               imageDataArray[j++] = 255;
             }
           }
@@ -1204,7 +1312,7 @@ class JpegImage {
             imageDataArray[j++] = R;
             imageDataArray[j++] = G;
             imageDataArray[j++] = B;
-            if (formatAsRGBA) {
+            if (decoder.opts.formatAsRGBA) {
               imageDataArray[j++] = 255;
             }
           }
@@ -1286,10 +1394,11 @@ function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
     }
   }
 
-  decoder.copyToImageData(image, opts.formatAsRGBA);
+  JpegImage.copyToImageData(decoder, image);
 
+  // TODO: Should probably deep copy here
   image.YCbCr = decoder.YCbCr;
-  image.DCT = decoder.DCT;
+  image.DCT = decoder.DCTs;
 
   return image;
 }
