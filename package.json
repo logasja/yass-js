@@ -2,9 +2,11 @@
   "name": "jpeg-js",
   "version": "0.6.0-development",
   "description": "A pure javascript JPEG encoder and decoder",
-  "main": "index.js",
+  "main": "lib/index.js",
+  "types": "lib/index.type.ds",
   "scripts": {
-    "test": "jest --testMatch=**/test/*.js"
+    "build": "tsc",
+    "test": "mocha -r ts-node/register test/*.spec.ts"
   },
   "repository": {
     "type": "git",
@@ -27,9 +29,13 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@types/chai": "^4.2.11",
+    "@types/mocha": "^8.0.0",
+    "chai": "^4.2.0",
     "husky": "^4.2.5",
     "jest": "^25.4.0",
     "lint-staged": "^10.2.11",
+    "mocha": "^8.0.1",
     "prettier": "^2.0.5",
     "ts-node": "^8.10.2",
     "typescript": "^3.9.7"

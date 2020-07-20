@@ -35,46 +35,60 @@ JPEG encoder ported to JavaScript and optimized by Andreas Ritter, www.bytestrom
 Basic GUI blocking jpeg encoder
 */
 
-var btoa =
-  btoa ||
-  function (buf) {
-    return Buffer.from(buf).toString('base64');
-  };
+import { RawImageData, BufferLike } from './types';
 
-function JPEGEncoder(quality) {
-  var self = this;
-  var fround = Math.round;
-  var ffloor = Math.floor;
-  var YTable = new Uint8Array(0x40);
-  var UVTable = new Uint8Array(0x40);
-  var fdtbl_Y = new Float32Array(0x40);
-  var fdtbl_UV = new Float32Array(0x40);
-  // Type is Uint8Array[] | undefined
-  var YDC_HT;
-  // Type is Uint8Array[] | undefined
-  var UVDC_HT;
-  // Type is Uint8Array[] | undefined
-  var YAC_HT;
-  var UVAC_HT;
+// var btoa =
+//   btoa ||
+//   function (buf: BufferLike) {
+//     return Buffer.from(buf).toString('base64');
+//   };
 
-  var bitcode = new Array(0xffff);
-  var category = new Uint8Array(0xffff);
-  var outputfDCTQuant = new Float32Array(0x40);
-  var DU = new Float32Array(0x40);
-  var byteout = [];
-  var bytenew = 0;
-  var bytepos = 7;
+var fround = Math.round;
+var ffloor = Math.floor;
 
-  var YDU = new Float32Array(0x40);
-  var UDU = new Float32Array(0x40);
-  var VDU = new Float32Array(0x40);
-  var clt = new Float32Array(0x100);
+class JPEGEncoder {
+  constructor(quality: number) {
+    var time_start = new Date().getTime();
+    if (!quality) quality = 50;
+    // Create tables
+    this.initCharLookupTable();
+    this.initHuffmanTbl();
+    this.initCategoryNumber();
+    this.initRGBYUVTable();
+    this.setQuality(quality);
+    var duration = new Date().getTime() - time_start;
+    //console.log('Initialization '+ duration + 'ms');
+  }
+  YTable = new Uint8Array(0x40);
+  UVTable = new Uint8Array(0x40);
+  fdtbl_Y = new Float32Array(0x40);
+  fdtbl_UV = new Float32Array(0x40);
+  // Type is Uint8Array[] | undefined
+  YDC_HT?: Uint8Array[];
+  // Type is Uint8Array[] | undefined
+  UVDC_HT?: Uint8Array[];
+  // Type is Uint8Array[] | undefined
+  YAC_HT?: Uint8Array[];
+  UVAC_HT?: Uint8Array[];
+
+  bitcode = new Array(0xffff);
+  category = new Uint8Array(0xffff);
+  outputfDCTQuant = new Float32Array(0x40);
+  DU = new Float32Array(0x40);
+  byteout: number[] = [];
+  bytenew = 0;
+  bytepos = 7;
+
+  YDU = new Float32Array(0x40);
+  UDU = new Float32Array(0x40);
+  VDU = new Float32Array(0x40);
+  clt = new Array<string>(0x100);
   // This could be a cause for issue
-  var RGB_YUV_TABLE = new Int32Array(2048);
-  var currentQuality;
+  RGB_YUV_TABLE = new Int32Array(2048);
+  currentQuality?: number;
 
   // prettier-ignore
-  const ZigZag = Uint8Array.from([
+  static readonly ZigZag = Uint8Array.from([
 			   0, 1, 5, 6,14,15,27,28,
 			   2, 4, 7,13,16,26,29,42,
 			   3, 8,12,17,25,30,41,43,
@@ -86,13 +100,13 @@ function JPEGEncoder(quality) {
 		  ]);
 
   // prettier-ignore
-  const std_dc_luminance_nrcodes = Uint8Array.from([0,0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0]);
+  static readonly std_dc_luminance_nrcodes = Uint8Array.from([0,0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0]);
   // prettier-ignore
-  const std_dc_luminance_values = Uint8Array.from([0,1,2,3,4,5,6,7,8,9,10,11]);
+  static readonly std_dc_luminance_values = Uint8Array.from([0,1,2,3,4,5,6,7,8,9,10,11]);
   // prettier-ignore
-  const std_ac_luminance_nrcodes = Uint8Array.from([0,0,2,1,3,3,2,4,3,5,5,4,4,0,0,1,0x7d]);
+  static readonly std_ac_luminance_nrcodes = Uint8Array.from([0,0,2,1,3,3,2,4,3,5,5,4,4,0,0,1,0x7d]);
   // prettier-ignore
-  const std_ac_luminance_values = Uint8Array.from([
+  static readonly std_ac_luminance_values = Uint8Array.from([
 			  0x01,0x02,0x03,0x00,0x04,0x11,0x05,0x12,
 			  0x21,0x31,0x41,0x06,0x13,0x51,0x61,0x07,
 			  0x22,0x71,0x14,0x32,0x81,0x91,0xa1,0x08,
@@ -117,13 +131,13 @@ function JPEGEncoder(quality) {
 		  ]);
 
   // prettier-ignore
-  const std_dc_chrominance_nrcodes = Uint8Array.from([0,0,3,1,1,1,1,1,1,1,1,1,0,0,0,0,0]);
+  static readonly std_dc_chrominance_nrcodes = Uint8Array.from([0,0,3,1,1,1,1,1,1,1,1,1,0,0,0,0,0]);
   // prettier-ignore
-  const std_dc_chrominance_values = Uint8Array.from([0,1,2,3,4,5,6,7,8,9,10,11]);
+  static readonly std_dc_chrominance_values = Uint8Array.from([0,1,2,3,4,5,6,7,8,9,10,11]);
   // prettier-ignore
-  const std_ac_chrominance_nrcodes = Uint8Array.from([0,0,2,1,2,4,4,3,4,7,5,4,4,0,1,2,0x77]);
+  static readonly std_ac_chrominance_nrcodes = Uint8Array.from([0,0,2,1,2,4,4,3,4,7,5,4,4,0,1,2,0x77]);
   // prettier-ignore
-  const std_ac_chrominance_values = Uint8Array.from([
+  static readonly std_ac_chrominance_values = Uint8Array.from([
 			  0x00,0x01,0x02,0x03,0x11,0x04,0x05,0x21,
 			  0x31,0x06,0x12,0x41,0x51,0x07,0x61,0x71,
 			  0x13,0x22,0x32,0x81,0x08,0x14,0x42,0x91,
@@ -147,7 +161,7 @@ function JPEGEncoder(quality) {
 			  0xf9,0xfa
 		  ]);
 
-  function initQuantTables(sf) {
+  initQuantTables(sf: number) {
     // prettier-ignore
     var YQT = Uint8Array.from([
 				  16, 11, 10, 16, 24, 40, 51, 61,
@@ -168,7 +182,7 @@ function JPEGEncoder(quality) {
       } else if (t > 255) {
         t = 255;
       }
-      YTable[ZigZag[i]] = t;
+      this.YTable[JPEGEncoder.ZigZag[i]] = t;
     }
     // prettier-ignore
     var UVQT = Uint8Array.from([
@@ -188,7 +202,7 @@ function JPEGEncoder(quality) {
       } else if (u > 255) {
         u = 255;
       }
-      UVTable[ZigZag[j]] = u;
+      this.UVTable[JPEGEncoder.ZigZag[j]] = u;
     }
     var aasf = Float32Array.from([
       1.0,
@@ -203,14 +217,18 @@ function JPEGEncoder(quality) {
     var k = 0;
     for (var row = 0; row < 8; row++) {
       for (var col = 0; col < 8; col++) {
-        fdtbl_Y[k] = 1.0 / (YTable[ZigZag[k]] * aasf[row] * aasf[col] * 8.0);
-        fdtbl_UV[k] = 1.0 / (UVTable[ZigZag[k]] * aasf[row] * aasf[col] * 8.0);
+        this.fdtbl_Y[k] =
+          1.0 /
+          (this.YTable[JPEGEncoder.ZigZag[k]] * aasf[row] * aasf[col] * 8.0);
+        this.fdtbl_UV[k] =
+          1.0 /
+          (this.UVTable[JPEGEncoder.ZigZag[k]] * aasf[row] * aasf[col] * 8.0);
         k++;
       }
     }
   }
 
-  function computeHuffmanTbl(nrcodes, std_table) {
+  private static computeHuffmanTbl(nrcodes: Uint8Array, std_table: Uint8Array) {
     var codevalue = 0;
     var pos_in_table = 0;
     // Type is Uint8Array[] | undefined
@@ -228,96 +246,96 @@ function JPEGEncoder(quality) {
     return HT;
   }
 
-  function initHuffmanTbl() {
-    YDC_HT = computeHuffmanTbl(
-      std_dc_luminance_nrcodes,
-      std_dc_luminance_values
+  private initHuffmanTbl() {
+    this.YDC_HT = JPEGEncoder.computeHuffmanTbl(
+      JPEGEncoder.std_dc_luminance_nrcodes,
+      JPEGEncoder.std_dc_luminance_values
     );
-    UVDC_HT = computeHuffmanTbl(
-      std_dc_chrominance_nrcodes,
-      std_dc_chrominance_values
+    this.UVDC_HT = JPEGEncoder.computeHuffmanTbl(
+      JPEGEncoder.std_dc_chrominance_nrcodes,
+      JPEGEncoder.std_dc_chrominance_values
     );
-    YAC_HT = computeHuffmanTbl(
-      std_ac_luminance_nrcodes,
-      std_ac_luminance_values
+    this.YAC_HT = JPEGEncoder.computeHuffmanTbl(
+      JPEGEncoder.std_ac_luminance_nrcodes,
+      JPEGEncoder.std_ac_luminance_values
     );
-    UVAC_HT = computeHuffmanTbl(
-      std_ac_chrominance_nrcodes,
-      std_ac_chrominance_values
+    this.UVAC_HT = JPEGEncoder.computeHuffmanTbl(
+      JPEGEncoder.std_ac_chrominance_nrcodes,
+      JPEGEncoder.std_ac_chrominance_values
     );
   }
 
-  function initCategoryNumber() {
+  private initCategoryNumber() {
     var nrlower = 1;
     var nrupper = 2;
     for (var cat = 1; cat <= 15; cat++) {
       //Positive numbers
       for (var nr = nrlower; nr < nrupper; nr++) {
-        category[0x7fff + nr] = cat;
-        bitcode[0x7fff + nr] = [];
-        bitcode[0x7fff + nr][1] = cat;
-        bitcode[0x7fff + nr][0] = nr;
+        this.category[0x7fff + nr] = cat;
+        this.bitcode[0x7fff + nr] = [];
+        this.bitcode[0x7fff + nr][1] = cat;
+        this.bitcode[0x7fff + nr][0] = nr;
       }
       //Negative numbers
       for (var nrneg = -(nrupper - 1); nrneg <= -nrlower; nrneg++) {
-        category[0x7fff + nrneg] = cat;
-        bitcode[0x7fff + nrneg] = [];
-        bitcode[0x7fff + nrneg][1] = cat;
-        bitcode[0x7fff + nrneg][0] = nrupper - 1 + nrneg;
+        this.category[0x7fff + nrneg] = cat;
+        this.bitcode[0x7fff + nrneg] = [];
+        this.bitcode[0x7fff + nrneg][1] = cat;
+        this.bitcode[0x7fff + nrneg][0] = nrupper - 1 + nrneg;
       }
       nrlower <<= 1;
       nrupper <<= 1;
     }
   }
 
-  function initRGBYUVTable() {
+  private initRGBYUVTable() {
     for (var i = 0; i < 256; i++) {
-      RGB_YUV_TABLE[i] = 19595 * i;
-      RGB_YUV_TABLE[(i + 256) >> 0] = 38470 * i;
-      RGB_YUV_TABLE[(i + 512) >> 0] = 7471 * i + 0x8000;
-      RGB_YUV_TABLE[(i + 768) >> 0] = -11059 * i;
-      RGB_YUV_TABLE[(i + 1024) >> 0] = -21709 * i;
-      RGB_YUV_TABLE[(i + 1280) >> 0] = 32768 * i + 0x807fff;
-      RGB_YUV_TABLE[(i + 1536) >> 0] = -27439 * i;
-      RGB_YUV_TABLE[(i + 1792) >> 0] = -5329 * i;
+      this.RGB_YUV_TABLE[i] = 19595 * i;
+      this.RGB_YUV_TABLE[(i + 256) >> 0] = 38470 * i;
+      this.RGB_YUV_TABLE[(i + 512) >> 0] = 7471 * i + 0x8000;
+      this.RGB_YUV_TABLE[(i + 768) >> 0] = -11059 * i;
+      this.RGB_YUV_TABLE[(i + 1024) >> 0] = -21709 * i;
+      this.RGB_YUV_TABLE[(i + 1280) >> 0] = 32768 * i + 0x807fff;
+      this.RGB_YUV_TABLE[(i + 1536) >> 0] = -27439 * i;
+      this.RGB_YUV_TABLE[(i + 1792) >> 0] = -5329 * i;
     }
   }
 
   // IO functions
-  function writeBits(bs) {
+  writeBits(bs: Uint8Array) {
     var value = bs[0];
     var posval = bs[1] - 1;
     while (posval >= 0) {
       if (value & (1 << posval)) {
-        bytenew |= 1 << bytepos;
+        this.bytenew |= 1 << this.bytepos;
       }
       posval--;
-      bytepos--;
-      if (bytepos < 0) {
-        if (bytenew == 0xff) {
-          writeByte(0xff);
-          writeByte(0);
+      this.bytepos--;
+      if (this.bytepos < 0) {
+        if (this.bytenew == 0xff) {
+          this.writeByte(0xff);
+          this.writeByte(0);
         } else {
-          writeByte(bytenew);
+          this.writeByte(this.bytenew);
         }
-        bytepos = 7;
-        bytenew = 0;
+        this.bytepos = 7;
+        this.bytenew = 0;
       }
     }
   }
 
-  function writeByte(value) {
+  writeByte(value: number) {
     //byteout.push(clt[value]); // write char directly instead of converting later
-    byteout.push(value);
+    this.byteout.push(value);
   }
 
-  function writeWord(value) {
-    writeByte((value >> 8) & 0xff);
-    writeByte(value & 0xff);
+  writeWord(value: number) {
+    this.writeByte((value >> 8) & 0xff);
+    this.writeByte(value & 0xff);
   }
 
   // DCT & quantization core
-  function fDCTQuant(data, fdtbl) {
+  fDCTQuant(data: Float32Array, fdtbl: Float32Array) {
     var d0, d1, d2, d3, d4, d5, d6, d7;
     /* Pass 1: process rows. */
     var dataOff = 0;
@@ -439,34 +457,34 @@ function JPEGEncoder(quality) {
     for (i = 0; i < I64; ++i) {
       // Apply the quantization and scaling factor & Round to nearest integer
       fDCTQuant = data[i] * fdtbl[i];
-      outputfDCTQuant[i] =
+      this.outputfDCTQuant[i] =
         fDCTQuant > 0.0 ? (fDCTQuant + 0.5) | 0 : (fDCTQuant - 0.5) | 0;
       //outputfDCTQuant[i] = fround(fDCTQuant);
     }
-    return outputfDCTQuant;
+    return this.outputfDCTQuant;
   }
 
-  function writeAPP0() {
-    writeWord(0xffe0); // marker
-    writeWord(16); // length
-    writeByte(0x4a); // J
-    writeByte(0x46); // F
-    writeByte(0x49); // I
-    writeByte(0x46); // F
-    writeByte(0); // = "JFIF",'\0'
-    writeByte(1); // versionhi
-    writeByte(1); // versionlo
-    writeByte(0); // xyunits
-    writeWord(1); // xdensity
-    writeWord(1); // ydensity
-    writeByte(0); // thumbnwidth
-    writeByte(0); // thumbnheight
+  writeAPP0() {
+    this.writeWord(0xffe0); // marker
+    this.writeWord(16); // length
+    this.writeByte(0x4a); // J
+    this.writeByte(0x46); // F
+    this.writeByte(0x49); // I
+    this.writeByte(0x46); // F
+    this.writeByte(0); // = "JFIF",'\0'
+    this.writeByte(1); // versionhi
+    this.writeByte(1); // versionlo
+    this.writeByte(0); // xyunits
+    this.writeWord(1); // xdensity
+    this.writeWord(1); // ydensity
+    this.writeByte(0); // thumbnwidth
+    this.writeByte(0); // thumbnheight
   }
 
-  function writeAPP1(exifBuffer) {
+  writeAPP1(exifBuffer: Uint8Array | undefined) {
     if (!exifBuffer) return;
 
-    writeWord(0xffe1); // APP1 marker
+    this.writeWord(0xffe1); // APP1 marker
 
     if (
       exifBuffer[0] === 0x45 &&
@@ -475,199 +493,203 @@ function JPEGEncoder(quality) {
       exifBuffer[3] === 0x66
     ) {
       // Buffer already starts with EXIF, just use it directly
-      writeWord(exifBuffer.length + 2); // length is buffer + length itself!
+      this.writeWord(exifBuffer.length + 2); // length is buffer + length itself!
     } else {
       // Buffer doesn't start with EXIF, write it for them
-      writeWord(exifBuffer.length + 5 + 2); // length is buffer + EXIF\0 + length itself!
-      writeByte(0x45); // E
-      writeByte(0x78); // X
-      writeByte(0x69); // I
-      writeByte(0x66); // F
-      writeByte(0); // = "EXIF",'\0'
+      this.writeWord(exifBuffer.length + 5 + 2); // length is buffer + EXIF\0 + length itself!
+      this.writeByte(0x45); // E
+      this.writeByte(0x78); // X
+      this.writeByte(0x69); // I
+      this.writeByte(0x66); // F
+      this.writeByte(0); // = "EXIF",'\0'
     }
 
     for (var i = 0; i < exifBuffer.length; i++) {
-      writeByte(exifBuffer[i]);
+      this.writeByte(exifBuffer[i]);
     }
   }
 
-  function writeSOF0(width, height) {
-    writeWord(0xffc0); // marker
-    writeWord(17); // length, truecolor YUV JPG
-    writeByte(8); // precision
-    writeWord(height);
-    writeWord(width);
-    writeByte(3); // nrofcomponents
-    writeByte(1); // IdY
-    writeByte(0x11); // HVY
-    writeByte(0); // QTY
-    writeByte(2); // IdU
-    writeByte(0x11); // HVU
-    writeByte(1); // QTU
-    writeByte(3); // IdV
-    writeByte(0x11); // HVV
-    writeByte(1); // QTV
+  writeSOF0(width: number, height: number) {
+    this.writeWord(0xffc0); // marker
+    this.writeWord(17); // length, truecolor YUV JPG
+    this.writeByte(8); // precision
+    this.writeWord(height);
+    this.writeWord(width);
+    this.writeByte(3); // nrofcomponents
+    this.writeByte(1); // IdY
+    this.writeByte(0x11); // HVY
+    this.writeByte(0); // QTY
+    this.writeByte(2); // IdU
+    this.writeByte(0x11); // HVU
+    this.writeByte(1); // QTU
+    this.writeByte(3); // IdV
+    this.writeByte(0x11); // HVV
+    this.writeByte(1); // QTV
   }
 
-  function writeDQT() {
-    writeWord(0xffdb); // marker
-    writeWord(132); // length
-    writeByte(0);
+  writeDQT() {
+    this.writeWord(0xffdb); // marker
+    this.writeWord(132); // length
+    this.writeByte(0);
     for (var i = 0; i < 64; i++) {
-      writeByte(YTable[i]);
+      this.writeByte(this.YTable[i]);
     }
-    writeByte(1);
+    this.writeByte(1);
     for (var j = 0; j < 64; j++) {
-      writeByte(UVTable[j]);
+      this.writeByte(this.UVTable[j]);
     }
   }
 
-  function writeDHT() {
-    writeWord(0xffc4); // marker
-    writeWord(0x01a2); // length
+  writeDHT() {
+    this.writeWord(0xffc4); // marker
+    this.writeWord(0x01a2); // length
 
-    writeByte(0); // HTYDCinfo
+    this.writeByte(0); // HTYDCinfo
     for (var i = 0; i < 16; i++) {
-      writeByte(std_dc_luminance_nrcodes[i + 1]);
+      this.writeByte(JPEGEncoder.std_dc_luminance_nrcodes[i + 1]);
     }
     for (var j = 0; j <= 11; j++) {
-      writeByte(std_dc_luminance_values[j]);
+      this.writeByte(JPEGEncoder.std_dc_luminance_values[j]);
     }
 
-    writeByte(0x10); // HTYACinfo
+    this.writeByte(0x10); // HTYACinfo
     for (var k = 0; k < 16; k++) {
-      writeByte(std_ac_luminance_nrcodes[k + 1]);
+      this.writeByte(JPEGEncoder.std_ac_luminance_nrcodes[k + 1]);
     }
     for (var l = 0; l <= 161; l++) {
-      writeByte(std_ac_luminance_values[l]);
+      this.writeByte(JPEGEncoder.std_ac_luminance_values[l]);
     }
 
-    writeByte(1); // HTUDCinfo
+    this.writeByte(1); // HTUDCinfo
     for (var m = 0; m < 16; m++) {
-      writeByte(std_dc_chrominance_nrcodes[m + 1]);
+      this.writeByte(JPEGEncoder.std_dc_chrominance_nrcodes[m + 1]);
     }
     for (var n = 0; n <= 11; n++) {
-      writeByte(std_dc_chrominance_values[n]);
+      this.writeByte(JPEGEncoder.std_dc_chrominance_values[n]);
     }
 
-    writeByte(0x11); // HTUACinfo
+    this.writeByte(0x11); // HTUACinfo
     for (var o = 0; o < 16; o++) {
-      writeByte(std_ac_chrominance_nrcodes[o + 1]);
+      this.writeByte(JPEGEncoder.std_ac_chrominance_nrcodes[o + 1]);
     }
     for (var p = 0; p <= 161; p++) {
-      writeByte(std_ac_chrominance_values[p]);
+      this.writeByte(JPEGEncoder.std_ac_chrominance_values[p]);
     }
   }
 
-  function writeSOS() {
-    writeWord(0xffda); // marker
-    writeWord(12); // length
-    writeByte(3); // nrofcomponents
-    writeByte(1); // IdY
-    writeByte(0); // HTY
-    writeByte(2); // IdU
-    writeByte(0x11); // HTU
-    writeByte(3); // IdV
-    writeByte(0x11); // HTV
-    writeByte(0); // Ss
-    writeByte(0x3f); // Se
-    writeByte(0); // Bf
+  writeSOS() {
+    this.writeWord(0xffda); // marker
+    this.writeWord(12); // length
+    this.writeByte(3); // nrofcomponents
+    this.writeByte(1); // IdY
+    this.writeByte(0); // HTY
+    this.writeByte(2); // IdU
+    this.writeByte(0x11); // HTU
+    this.writeByte(3); // IdV
+    this.writeByte(0x11); // HTV
+    this.writeByte(0); // Ss
+    this.writeByte(0x3f); // Se
+    this.writeByte(0); // Bf
   }
 
   // Process the data units
   // CDU is 64 values (e.g., 8x8 subblock)
-  function processDU(CDU, fdtbl, DC, HTDC, HTAC) {
+  processDU(
+    CDU: Float32Array,
+    fdtbl: Float32Array,
+    DC: number,
+    HTDC: Uint8Array[],
+    HTAC: Uint8Array[]
+  ) {
     var EOB = HTAC[0x00];
     var M16zeroes = HTAC[0xf0];
     var pos;
     var I16 = 16;
     var I63 = 63;
     var I64 = 0x40;
-    var DU_DCT = fDCTQuant(CDU, fdtbl);
+    var DU_DCT = this.fDCTQuant(CDU, fdtbl);
     //ZigZag reorder
     for (var j = 0; j < I64; ++j) {
-      DU[ZigZag[j]] = DU_DCT[j];
+      this.DU[JPEGEncoder.ZigZag[j]] = DU_DCT[j];
     }
-    var Diff = DU[0] - DC;
-    DC = DU[0];
+    var Diff = this.DU[0] - DC;
+    DC = this.DU[0];
     //Encode DC
     if (Diff == 0) {
-      writeBits(HTDC[0]); // Diff might be 0
+      this.writeBits(HTDC[0]); // Diff might be 0
     } else {
       pos = 0x7fff + Diff;
-      writeBits(HTDC[category[pos]]);
-      writeBits(bitcode[pos]);
+      this.writeBits(HTDC[this.category[pos]]);
+      this.writeBits(this.bitcode[pos]);
     }
     //Encode ACs
     var end0pos = 63; // was const... which is crazy
-    for (; end0pos > 0 && DU[end0pos] == 0; end0pos--) {}
+    for (; end0pos > 0 && this.DU[end0pos] == 0; end0pos--) {}
     //end0pos = first element in reverse order !=0
     if (end0pos == 0) {
-      writeBits(EOB);
+      this.writeBits(EOB);
       return DC;
     }
     var i = 1;
     var lng;
     while (i <= end0pos) {
       var startpos = i;
-      for (; DU[i] == 0 && i <= end0pos; ++i) {}
+      for (; this.DU[i] == 0 && i <= end0pos; ++i) {}
       var nrzeroes = i - startpos;
       if (nrzeroes >= I16) {
         lng = nrzeroes >> 4;
         for (var nrmarker = 1; nrmarker <= lng; ++nrmarker)
-          writeBits(M16zeroes);
+          this.writeBits(M16zeroes);
         nrzeroes = nrzeroes & 0xf;
       }
-      pos = 0x7fff + DU[i];
-      writeBits(HTAC[(nrzeroes << 4) + category[pos]]);
-      writeBits(bitcode[pos]);
+      pos = 0x7fff + this.DU[i];
+      this.writeBits(HTAC[(nrzeroes << 4) + this.category[pos]]);
+      this.writeBits(this.bitcode[pos]);
       i++;
     }
     if (end0pos != I63) {
-      writeBits(EOB);
+      this.writeBits(EOB);
     }
     return DC;
   }
 
-  function initCharLookupTable() {
+  initCharLookupTable() {
     var sfcc = String.fromCharCode;
     for (var i = 0; i < 256; i++) {
       ///// ACHTUNG // 255
-      clt[i] = sfcc(i);
+      this.clt[i] = sfcc(i);
     }
   }
 
-  this.encode = function (
-    image,
-    quality // image data object
+  encode(
+    image: RawImageData<Buffer | Uint8Array>,
+    quality: number // image data object
   ) {
     var time_start = new Date().getTime();
 
-    if (quality) setQuality(quality);
+    if (quality) this.setQuality(quality);
 
     // Initialize bit writer
-    byteout = new Array();
-    bytenew = 0;
-    bytepos = 7;
+    this.byteout = new Array();
+    this.bytenew = 0;
+    this.bytepos = 7;
 
     // Add JPEG headers
-    writeWord(0xffd8); // SOI
-    writeAPP0();
-    writeAPP1(image.exifBuffer);
-    writeDQT();
-    writeSOF0(image.width, image.height);
-    writeDHT();
-    writeSOS();
+    this.writeWord(0xffd8); // SOI
+    this.writeAPP0();
+    this.writeAPP1(image.exif);
+    this.writeDQT();
+    this.writeSOF0(image.width, image.height);
+    this.writeDHT();
+    this.writeSOS();
 
     // Encode 8x8 macroblocks
     var DCY = 0;
     var DCU = 0;
     var DCV = 0;
 
-    bytenew = 0;
-    bytepos = 7;
-
-    this.encode.displayName = '_encode_';
+    this.bytenew = 0;
+    this.bytepos = 7;
 
     var imageData = image.data;
     var width = image.width;
@@ -679,7 +701,7 @@ function JPEGEncoder(quality) {
     var x,
       y = 0;
     var r, g, b;
-    var start, p, col, row, pos;
+    var start: number, p: number, col: number, row: number, pos: number;
     // This is where RGBA is converted into YUV -> DCT -> Processed -> Written to buffer
     // TODO: Skip this in favor of pre-computed DCTs
     while (y < height) {
@@ -716,30 +738,48 @@ function JPEGEncoder(quality) {
               */
 
           // use lookup table (slightly faster)
-          YDU[pos] =
-            ((RGB_YUV_TABLE[r] +
-              RGB_YUV_TABLE[(g + 256) >> 0] +
-              RGB_YUV_TABLE[(b + 512) >> 0]) >>
+          this.YDU[pos] =
+            ((this.RGB_YUV_TABLE[r] +
+              this.RGB_YUV_TABLE[(g + 256) >> 0] +
+              this.RGB_YUV_TABLE[(b + 512) >> 0]) >>
               16) -
             128;
-          UDU[pos] =
-            ((RGB_YUV_TABLE[(r + 768) >> 0] +
-              RGB_YUV_TABLE[(g + 1024) >> 0] +
-              RGB_YUV_TABLE[(b + 1280) >> 0]) >>
+          this.UDU[pos] =
+            ((this.RGB_YUV_TABLE[(r + 768) >> 0] +
+              this.RGB_YUV_TABLE[(g + 1024) >> 0] +
+              this.RGB_YUV_TABLE[(b + 1280) >> 0]) >>
               16) -
             128;
-          VDU[pos] =
-            ((RGB_YUV_TABLE[(r + 1280) >> 0] +
-              RGB_YUV_TABLE[(g + 1536) >> 0] +
-              RGB_YUV_TABLE[(b + 1792) >> 0]) >>
+          this.VDU[pos] =
+            ((this.RGB_YUV_TABLE[(r + 1280) >> 0] +
+              this.RGB_YUV_TABLE[(g + 1536) >> 0] +
+              this.RGB_YUV_TABLE[(b + 1792) >> 0]) >>
               16) -
             128;
         }
 
         // Where values are converted to DCT rep and bytes are written to the buffer
-        DCY = processDU(YDU, fdtbl_Y, DCY, YDC_HT, YAC_HT);
-        DCU = processDU(UDU, fdtbl_UV, DCU, UVDC_HT, UVAC_HT);
-        DCV = processDU(VDU, fdtbl_UV, DCV, UVDC_HT, UVAC_HT);
+        DCY = this.processDU(
+          this.YDU,
+          this.fdtbl_Y,
+          DCY,
+          this.YDC_HT!,
+          this.YAC_HT!
+        );
+        DCU = this.processDU(
+          this.UDU,
+          this.fdtbl_UV,
+          DCU,
+          this.UVDC_HT!,
+          this.UVAC_HT!
+        );
+        DCV = this.processDU(
+          this.VDU,
+          this.fdtbl_UV,
+          DCV,
+          this.UVDC_HT!,
+          this.UVAC_HT!
+        );
         x += 32;
       }
       y += 8;
@@ -748,31 +788,32 @@ function JPEGEncoder(quality) {
     ////////////////////////////////////////////////////////////////
 
     // Do the bit alignment of the EOI marker
-    if (bytepos >= 0) {
+    if (this.bytepos >= 0) {
       var fillbits = [];
-      fillbits[1] = bytepos + 1;
-      fillbits[0] = (1 << (bytepos + 1)) - 1;
-      writeBits(fillbits);
+      fillbits[1] = this.bytepos + 1;
+      fillbits[0] = (1 << (this.bytepos + 1)) - 1;
+      this.writeBits(Uint8Array.from(fillbits));
     }
 
-    writeWord(0xffd9); //EOI
+    this.writeWord(0xffd9); //EOI
 
-    if (typeof module === 'undefined') return new Uint8Array(byteout);
-    return Buffer.from(byteout);
+    if (typeof module === 'undefined') return new Uint8Array(this.byteout);
+    return Buffer.from(this.byteout);
 
-    var jpegDataUri = 'data:image/jpeg;base64,' + btoa(byteout.join(''));
+    // TODO: Base64 string output
+    // var jpegDataUri = 'data:image/jpeg;base64,' + btoa(this.byteout.join(''));
 
-    byteout = [];
+    // this.byteout = [];
 
-    // benchmarking
-    var duration = new Date().getTime() - time_start;
-    //console.log('Encoding time: '+ duration + 'ms');
-    //
+    // // benchmarking
+    // var duration = new Date().getTime() - time_start;
+    // //console.log('Encoding time: '+ duration + 'ms');
+    // //
 
-    return jpegDataUri;
-  };
+    // return jpegDataUri;
+  }
 
-  function setQuality(quality) {
+  setQuality(quality: number) {
     if (quality <= 0) {
       quality = 1;
     }
@@ -780,7 +821,7 @@ function JPEGEncoder(quality) {
       quality = 100;
     }
 
-    if (currentQuality == quality) return; // don't recalc if unchanged
+    if (this.currentQuality == quality) return; // don't recalc if unchanged
 
     var sf = 0;
     if (quality < 50) {
@@ -789,36 +830,16 @@ function JPEGEncoder(quality) {
       sf = Math.floor(200 - quality * 2);
     }
 
-    initQuantTables(sf);
-    currentQuality = quality;
+    this.initQuantTables(sf);
+    this.currentQuality = quality;
     //console.log('Quality set to: '+quality +'%');
   }
-
-  function init() {
-    var time_start = new Date().getTime();
-    if (!quality) quality = 50;
-    // Create tables
-    initCharLookupTable();
-    initHuffmanTbl();
-    initCategoryNumber();
-    initRGBYUVTable();
-
-    setQuality(quality);
-    var duration = new Date().getTime() - time_start;
-    //console.log('Initialization '+ duration + 'ms');
-  }
-
-  init();
 }
 
-if (typeof module !== 'undefined') {
-  module.exports = encode;
-} else if (typeof window !== 'undefined') {
-  window['jpeg-js'] = window['jpeg-js'] || {};
-  window['jpeg-js'].encode = encode;
-}
-
-function encode(imgData, qu) {
+export function encode(
+  imgData: RawImageData<Buffer | Uint8Array>,
+  qu?: number
+) {
   if (typeof qu === 'undefined') qu = 50;
   var encoder = new JPEGEncoder(qu);
   var data = encoder.encode(imgData, qu);
@@ -827,19 +848,4 @@ function encode(imgData, qu) {
     width: imgData.width,
     height: imgData.height,
   };
-}
-
-// helper function to get the imageData of an existing image on the current page.
-function getImageDataFromImage(idOrElement) {
-  var theImg =
-    typeof idOrElement == 'string'
-      ? document.getElementById(idOrElement)
-      : idOrElement;
-  var cvs = document.createElement('canvas');
-  cvs.width = theImg.width;
-  cvs.height = theImg.height;
-  var ctx = cvs.getContext('2d');
-  ctx.drawImage(theImg, 0, 0);
-
-  return ctx.getImageData(0, 0, cvs.width, cvs.height);
 }
