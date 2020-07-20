@@ -17,6 +17,7 @@
 */
 
 import { RawImageData, BufferLike, DecodePrefs, DCTs, YCbCr } from './types';
+import { clampTo8bit } from './utils';
 
 // - The JPEG specification can be found in the ITU CCITT Recommendation T.81
 //   (www.w3.org/Graphics/JPEG/itu-t81.pdf)
@@ -68,8 +69,7 @@ interface ImageFrameComponent {
 }
 
 interface ImageFrameComponents {
-  [index: number]: ImageFrameComponent;
-  length: number;
+  [index: string]: ImageFrameComponent;
 }
 
 interface ImageFrame {
@@ -122,11 +122,11 @@ class JpegImage {
     // If this constructor ever supports async decoding this will need to be done differently.
     // Until then, treating as singleton limit is fine.
     this.resetMaxMemoryUsage(this.opts.maxMemoryUsageInMB! * 1024 * 1024);
-    this.parse(data);
     this.height = 0;
     this.width = 0;
     this.comments = [];
     this.components = [];
+    this.parse(data);
   }
 
   protected readonly opts: DecodePrefs;
@@ -191,7 +191,7 @@ class JpegImage {
     data: Uint8Array,
     offset: number,
     frame: ImageFrame,
-    components: ImageFrameComponents,
+    components: ImageFrameComponent[],
     resetInterval: number,
     spectralStart: number,
     spectralEnd: number,
@@ -397,7 +397,7 @@ class JpegImage {
       decode(component, component.blocks![blockRow][blockCol]);
     }
 
-    var componentsLength = components.length;
+    var componentsLength = Object.keys(components).length;
     var component, i, j, k, n;
     var decodeFn;
     if (progressive) {
@@ -751,7 +751,7 @@ class JpegImage {
     var component, componentId;
     for (componentId in frame.components) {
       if (frame.components!.hasOwnProperty(componentId)) {
-        component = frame.components![Number.parseInt(componentId)];
+        component = frame.components![componentId];
         if (maxH < component.h) maxH = component.h;
         if (maxV < component.v) maxV = component.v;
       }
@@ -935,10 +935,8 @@ class JpegImage {
           frame.precision = data[offset++];
           [frame.scanLines, offset] = JpegImage.readUint16(data, offset);
           [frame.samplesPerLine, offset] = JpegImage.readUint16(data, offset);
-          frame.components = {
-            length: 0,
-          };
           frame.componentsOrder = [];
+          frame.components = {};
 
           var pixelsInFrame = frame.scanLines * frame.samplesPerLine;
           if (pixelsInFrame > maxResolutionInPixels) {
@@ -965,7 +963,6 @@ class JpegImage {
               v: v,
               quantizationIdx: qId,
             };
-            frame.components.length += 1;
             offset += 3;
           }
           this.prepareComponents(frame);
@@ -1064,7 +1061,6 @@ class JpegImage {
 
     this.width = frame.samplesPerLine!;
     this.height = frame.scanLines!;
-    this.components = [];
     for (i = 0; i < frame.componentsOrder!.length; i++) {
       var imageFrameComponent = frame.components![frame.componentsOrder![i]];
       this.components.push({
