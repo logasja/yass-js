@@ -1350,7 +1350,7 @@ class JpegImage {
   }
 }
 
-function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
+export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
   var defaultOpts: DecodePrefs = {
     // "undefined" means "Choose whether to transform colors based on the image’s color model."
     colorTransform: undefined,

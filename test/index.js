@@ -1,7 +1,7 @@
 var fs = require('fs'),
   path = require('path'),
   assert = require('assert'),
-  jpeg = require('..');
+  jpeg = require('../lib');
 const { fail } = require('assert');
 
 function fixture(name) {
@@ -175,7 +175,7 @@ it('should be able to create a JPEG from an array', function () {
 
 it('should be able to decode a JPEG into a typed array', function () {
   var jpegData = fixture('grumpycat.jpg');
-  var rawImageData = jpeg.decode(jpegData, {useTArray: true});
+  var rawImageData = jpeg.decode(jpegData, { useTArray: true });
   expect(rawImageData.width).toEqual(320);
   expect(rawImageData.height).toEqual(180);
   var expected = fixture('grumpycat.rgba');
@@ -185,7 +185,7 @@ it('should be able to decode a JPEG into a typed array', function () {
 
 it('should be able to decode a JPEG from a typed array into a typed array', function () {
   var jpegData = fixture('grumpycat.jpg');
-  var rawImageData = jpeg.decode(new Uint8Array(jpegData), {useTArray: true});
+  var rawImageData = jpeg.decode(new Uint8Array(jpegData), { useTArray: true });
   expect(rawImageData.width).toEqual(320);
   expect(rawImageData.height).toEqual(180);
   var expected = fixture('grumpycat.rgba');
@@ -207,11 +207,10 @@ it('should be able to decode a JPEG with options', function () {
 });
 
 it('should be able to decode a JPEG with YCbCr options', function () {
-
   var jpegData = fixture('grumpycat.jpg');
   var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
     useTArray: true,
-    withYCbCr: true
+    withYCbCr: true,
   });
   expect(rawImageData.width).toEqual(320);
   expect(rawImageData.height).toEqual(180);
@@ -220,11 +219,10 @@ it('should be able to decode a JPEG with YCbCr options', function () {
 });
 
 it('should be able to encode a JPEG with YCbCr input', function () {
-
   var jpegData = fixture('grumpycat.jpg');
   var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
     useTArray: true,
-    withYCbCr: true
+    withYCbCr: true,
   });
   expect(rawImageData.width).toEqual(320);
   expect(rawImageData.height).toEqual(180);
@@ -235,18 +233,20 @@ it('should be able to encode a JPEG with YCbCr input', function () {
 });
 
 it('should be able to decode a JPEG with DCT options', function () {
-
   var jpegData = fixture('grumpycat.jpg');
   var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
     useTArray: true,
-    withDCTs: true
+    withDCTs: true,
   });
   expect(rawImageData.DCT.Y[0][0].length).toEqual(64);
 });
 
 it('should be able to decode a JPEG into RGB', function () {
   var jpegData = fixture('grumpycat.jpg');
-  var rawImageData = jpeg.decode(new Uint8Array(jpegData), {useTArray: true, formatAsRGBA: false});
+  var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    useTArray: true,
+    formatAsRGBA: false,
+  });
   expect(rawImageData.width).toEqual(320);
   expect(rawImageData.height).toEqual(180);
   var expected = fixture('grumpycat.rgb');
@@ -273,14 +273,14 @@ it('should be able to decode large images within memory limits', () => {
 // See https://github.com/eugeneware/jpeg-js/issues/53
 it('should limit resolution exposure', function () {
   expect(() => jpeg.decode(SUPER_LARGE_JPEG_BUFFER)).toThrow(
-    'maxResolutionInMP limit exceeded by 141MP',
+    'maxResolutionInMP limit exceeded by 141MP'
   );
 });
 
 it('should limit memory exposure', function () {
-  expect(() => jpeg.decode(SUPER_LARGE_JPEG_BUFFER, {maxResolutionInMP: 500})).toThrow(
-    /maxMemoryUsageInMB limit exceeded by at least \d+MB/,
-  );
+  expect(() =>
+    jpeg.decode(SUPER_LARGE_JPEG_BUFFER, { maxResolutionInMP: 500 })
+  ).toThrow(/maxMemoryUsageInMB limit exceeded by at least \d+MB/);
 
   // Make sure the limit resets each decode.
   var jpegData = fixture('grumpycat.jpg');

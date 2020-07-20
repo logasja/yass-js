@@ -37,11 +37,11 @@ Basic GUI blocking jpeg encoder
 
 import { RawImageData, BufferLike } from './types';
 
-var btoa =
-  btoa ||
-  function (buf: BufferLike) {
-    return Buffer.from(buf).toString('base64');
-  };
+// var btoa =
+//   btoa ||
+//   function (buf: BufferLike) {
+//     return Buffer.from(buf).toString('base64');
+//   };
 
 var fround = Math.round;
 var ffloor = Math.floor;
@@ -800,16 +800,17 @@ class JPEGEncoder {
     if (typeof module === 'undefined') return new Uint8Array(this.byteout);
     return Buffer.from(this.byteout);
 
-    var jpegDataUri = 'data:image/jpeg;base64,' + btoa(this.byteout.join(''));
+    // TODO: Base64 string output
+    // var jpegDataUri = 'data:image/jpeg;base64,' + btoa(this.byteout.join(''));
 
-    this.byteout = [];
+    // this.byteout = [];
 
-    // benchmarking
-    var duration = new Date().getTime() - time_start;
-    //console.log('Encoding time: '+ duration + 'ms');
-    //
+    // // benchmarking
+    // var duration = new Date().getTime() - time_start;
+    // //console.log('Encoding time: '+ duration + 'ms');
+    // //
 
-    return jpegDataUri;
+    // return jpegDataUri;
   }
 
   setQuality(quality: number) {
@@ -835,7 +836,10 @@ class JPEGEncoder {
   }
 }
 
-function encode(imgData: RawImageData<Buffer | Uint8Array>, qu?: number) {
+export function encode(
+  imgData: RawImageData<Buffer | Uint8Array>,
+  qu?: number
+) {
   if (typeof qu === 'undefined') qu = 50;
   var encoder = new JPEGEncoder(qu);
   var data = encoder.encode(imgData, qu);
