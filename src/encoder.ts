@@ -631,8 +631,8 @@ class JPEGEncoder {
     if (CDU == this.YDU) {
       // TODO: Based on block capacity embed X bits of data
       let cap = QIM.getBlockCapacity({ qDCT_block: this.DU });
-      cap > 3 ? console.log(cap) : undefined;
-      cap > 3 ? console.log(this.DU) : undefined;
+      // cap > 3 ? console.log(cap) : undefined;
+      // cap > 3 ? console.log(this.DU) : undefined;
     }
     var Diff = this.DU[0] - DC;
     DC = this.DU[0];
