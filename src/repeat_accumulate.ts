@@ -1,6 +1,6 @@
 //file to implement Repeat-accumulate codes
 import { assert } from 'console';
-import * as SeededShuffle from 'seededshuffle';
+import { shuffle, unshuffle } from 'seededshuffle';
 
 interface RAout {
   message: string;
@@ -36,7 +36,7 @@ export class RepeatAccumulation {
     }
 
     //shuffle the message
-    var shuffled_re_msg = SeededShuffle.shuffle<string>(re_msg, key);
+    var shuffled_re_msg = shuffle<string>(re_msg, key);
 
     //calculated the accumulated sum
     var t = new Array(re_msg_len);
@@ -75,7 +75,7 @@ export class RepeatAccumulation {
     }
 
     //restore the shuffled message to repeated message
-    let re_msg = SeededShuffle.unshuffle(shuffled_re_msg, key);
+    let re_msg = unshuffle(shuffled_re_msg, key);
 
     //devide the repeated message into several parts, each part contains q bits
     var bit_count = [0, 0]; //create list to record appeared bits [number of appeared 0, number of appeared 1]
