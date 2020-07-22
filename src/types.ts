@@ -6,12 +6,13 @@ export interface RawImageData<T> {
   YCbCr?: YCbCr;
   exif?: Uint8Array;
   comments?: string[];
+  message?: string;
 }
 
 export interface DCTs {
-  Y: Int32Array[][];
-  U?: Int32Array[][];
-  V?: Int32Array[][];
+  Y: Float32Array[][];
+  U?: Float32Array[][];
+  V?: Float32Array[][];
 }
 
 export interface YCbCr {
@@ -30,6 +31,7 @@ export interface DecodePrefs {
   maxMemoryUsageInMB?: number; // Don't decode if memory footprint is more than 512MB
   withYCbCr?: boolean; // Return the YCbCr arrays
   withDCTs?: boolean; // Return the decoded DCTs
+  getMessage?: boolean;
 }
 
 export type BufferRet = RawImageData<Buffer>;
