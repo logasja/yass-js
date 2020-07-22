@@ -25,3 +25,11 @@ describe('Test the embedding of various sizes of messages', () => {
     fs.writeFileSync('./test/output_jpgs/grumpy_hello.jpg', jpegImageData.data);
   });
 });
+
+describe('Test extracting previously embedded messages', () => {
+  it('should complete without error and properly read message', () => {
+    let fbuf = fs.readFileSync('./test/output_jpgs/grumpy_hello.jpg');
+    var imageData = jpeg.decode(fbuf, { getMessage: true });
+    console.log(imageData);
+  });
+});
