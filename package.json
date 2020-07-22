@@ -1,6 +1,6 @@
 {
   "name": "jpeg-js",
-  "version": "0.6.0-development",
+  "version": "1.0.0",
   "description": "A pure javascript JPEG encoder and decoder",
   "main": "lib/index.js",
   "types": "lib/index.type.ds",
