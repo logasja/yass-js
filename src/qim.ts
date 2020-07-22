@@ -50,21 +50,24 @@ export class QIM {
   static quantI(
     qDCT_block: Float32Array,
     t: number = 8,
-    delta: number,
+    delta: number = 4,
     N: number = QIM.AC_COORDS
   ): { idx: number; rk: number; t: boolean }[] {
+    // console.log('Quant I');
     let out: { idx: number; rk: number; t: boolean }[] = [];
     // Skip the first value
     for (var k = 1; k < N; ++k) {
       // Quantization taken from https://en.wikipedia.org/wiki/Quantization_(signal_processing)
       var r_k = delta * Math.floor(qDCT_block[k] / delta + 0.5);
       r_k = Math.abs(r_k);
+      // console.log(r_k);
 
       if (r_k > t) {
         out.push({ idx: k, rk: r_k, t: false });
       } else if (r_k === t) {
         out.push({ idx: k, rk: r_k, t: true });
       }
+      // console.log(k);
     }
     return out;
   }
@@ -103,7 +106,6 @@ export class QIM {
     delta?: number;
     N?: number;
   }): number {
-    let capacity = 0;
     return QIM.quantI(qDCT_block, t, delta, N).filter((val) => {
       return val.t == false;
     }).length;
@@ -150,7 +152,8 @@ export class QIM {
     var embeddable = QIM.quantI(qDCT_block, t, delta, N);
 
     // embed bit into each available coefficient
-    embeddable.forEach((coef, i) => {
+    let i = 0;
+    embeddable.forEach((coef) => {
       if (coef.t) {
         qDCT_block[coef.idx] = coef.rk;
       } else {
@@ -159,6 +162,7 @@ export class QIM {
           Number.parseInt(data.charAt(i)),
           delta
         );
+        ++i;
       }
     });
 

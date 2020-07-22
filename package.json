@@ -9,7 +9,8 @@
     "test": "mocha -r ts-node/register test/*.spec.ts",
     "test:jpeg": "mocha -r ts-node/register test/jpeg.spec.ts",
     "test:qim": "mocha -r ts-node/register test/qim.spec.ts",
-    "test:repeat_accumulation": "mocha -r ts-node/register test/repeat_accumulation.spec.ts"
+    "test:repeat_accumulation": "mocha -r ts-node/register test/repeat_accumulation.spec.ts",
+    "test:embed": "mocha -r ts-node/register test/embed.spec.ts"
   },
   "repository": {
     "type": "git",

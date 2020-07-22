@@ -37,6 +37,7 @@ Basic GUI blocking jpeg encoder
 
 import { RawImageData, BufferLike } from './types';
 import { QIM } from './qim';
+import { binarize } from './utils';
 
 // var btoa =
 //   btoa ||
@@ -48,7 +49,7 @@ var fround = Math.round;
 var ffloor = Math.floor;
 
 class JPEGEncoder {
-  constructor(quality: number) {
+  constructor(quality: number, message?: string) {
     var time_start = new Date().getTime();
     if (!quality) quality = 50;
     // Create tables
@@ -59,7 +60,13 @@ class JPEGEncoder {
     this.setQuality(quality);
     var duration = new Date().getTime() - time_start;
     //console.log('Initialization '+ duration + 'ms');
+    this.message = message ? binarize(message) : '';
   }
+
+  // Variables for data embedding
+  message: string;
+
+  // Calculated quantization tables
   YTable = new Uint8Array(0x40);
   UVTable = new Uint8Array(0x40);
   // Calculated quantization table for given quality
@@ -67,8 +74,10 @@ class JPEGEncoder {
   // Calculated quantization table for given quality
   fdtbl_UV = new Float32Array(0x40);
   // Type is Uint8Array[] | undefined
+  // Y Huffman table
   YDC_HT?: Uint8Array[];
   // Type is Uint8Array[] | undefined
+  // U & V Huffman table
   UVDC_HT?: Uint8Array[];
   // Type is Uint8Array[] | undefined
   YAC_HT?: Uint8Array[];
@@ -622,18 +631,26 @@ class JPEGEncoder {
     // Calculate the quantized DCT 8x8 block
     var DU_DCT = this.fDCTQuant(CDU, fdtbl);
 
+    // Encode parts of message here only in Y channel
+    if (CDU == this.YDU && this.message != '') {
+      // TODO: Based on block capacity embed X bits of data
+      // Get capacity of the current block
+      let cap = QIM.getBlockCapacity({ qDCT_block: DU_DCT });
+      // Get substring of message to encode into block
+      let embeddable = this.message.substr(0, cap);
+
+      // Embed substring into block
+      DU_DCT = QIM.embedQDCT(DU_DCT, embeddable);
+      // Trim the embedded message of bits put into block
+      this.message = this.message.slice(cap);
+    }
+
     //ZigZag reorder
-    // De-zigzag?
+    // Dezigzag?
     for (var j = 0; j < I64; ++j) {
       this.DU[JPEGEncoder.ZigZag[j]] = DU_DCT[j];
     }
-    // TODO: Encode parts of message here only in Y channel
-    if (CDU == this.YDU) {
-      // TODO: Based on block capacity embed X bits of data
-      let cap = QIM.getBlockCapacity({ qDCT_block: this.DU });
-      // cap > 3 ? console.log(cap) : undefined;
-      // cap > 3 ? console.log(this.DU) : undefined;
-    }
+
     var Diff = this.DU[0] - DC;
     DC = this.DU[0];
     //Encode DC
@@ -818,6 +835,14 @@ class JPEGEncoder {
 
     this.writeWord(0xffd9); //EOI
 
+    if (this.message != '') {
+      throw new Error(
+        'The message was unable to be completely embedded. ' +
+          this.message.length.toString() +
+          ' message bits left.'
+      );
+    }
+
     if (typeof module === 'undefined') return new Uint8Array(this.byteout);
     return Buffer.from(this.byteout);
 
@@ -859,10 +884,11 @@ class JPEGEncoder {
 
 export function encode(
   imgData: RawImageData<Buffer | Uint8Array>,
-  qu?: number
+  qu?: number,
+  message?: string
 ) {
   if (typeof qu === 'undefined') qu = 50;
-  var encoder = new JPEGEncoder(qu);
+  var encoder = new JPEGEncoder(qu, message);
   var data = encoder.encode(imgData, qu);
   return {
     data: data,
