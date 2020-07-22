@@ -1,7 +1,7 @@
 {
-  "name": "jpeg-js",
+  "name": "yass-js",
   "version": "1.0.0",
-  "description": "A pure javascript JPEG encoder and decoder",
+  "description": "A steganographic encoder and decoder built on top of a jpeg library.",
   "main": "lib/index.js",
   "types": "lib/index.type.ds",
   "scripts": {
@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.gatech.edu/spud/jpeg-js"
+    "url": "https://bitbucket.org/spudlab/yass-js"
   },
   "keywords": [
     "jpeg",
@@ -24,12 +24,14 @@
     "codec",
     "image",
     "javascript",
-    "js"
+    "js",
+    "yass",
+    "steganography"
   ],
-  "author": "Eugene Ware <eugene@noblesamurai.com>",
+  "author": "Jacob Logas <logasja@gatech.edu>",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.gatech.edu/spud/jpeg-js/issues"
+    "url": "https://trello.com/b/OE4fWKJW/stegoshare"
   },
   "dependencies": {
     "seededshuffle": "^0.2.0",
