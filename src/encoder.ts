@@ -35,7 +35,10 @@ JPEG encoder ported to JavaScript and optimized by Andreas Ritter, www.bytestrom
 Basic GUI blocking jpeg encoder
 */
 
-import { RawImageData, BufferLike } from './types';
+import { RawImageData, EmbedMessage } from './types';
+import { QIM } from './qim';
+import { binarize, addMessageTail } from './utils';
+import { RepeatAccumulation } from './repeat_accumulate';
 
 // var btoa =
 //   btoa ||
@@ -47,7 +50,7 @@ var fround = Math.round;
 var ffloor = Math.floor;
 
 class JPEGEncoder {
-  constructor(quality: number) {
+  constructor(quality: number, message?: EmbedMessage) {
     var time_start = new Date().getTime();
     if (!quality) quality = 50;
     // Create tables
@@ -56,16 +59,35 @@ class JPEGEncoder {
     this.initCategoryNumber();
     this.initRGBYUVTable();
     this.setQuality(quality);
-    var duration = new Date().getTime() - time_start;
+    // var duration = new Date().getTime() - time_start;
     //console.log('Initialization '+ duration + 'ms');
+    this.message = message
+      ? addMessageTail(
+          RepeatAccumulation.encode(
+            binarize(message.str),
+            message.q,
+            message.key
+          ).message,
+          message.q
+        )
+      : '';
   }
+
+  // Variables for data embedding
+  message: string;
+
+  // Calculated quantization tables
   YTable = new Uint8Array(0x40);
   UVTable = new Uint8Array(0x40);
+  // Calculated quantization table for given quality
   fdtbl_Y = new Float32Array(0x40);
+  // Calculated quantization table for given quality
   fdtbl_UV = new Float32Array(0x40);
   // Type is Uint8Array[] | undefined
+  // Y Huffman table
   YDC_HT?: Uint8Array[];
   // Type is Uint8Array[] | undefined
+  // U & V Huffman table
   UVDC_HT?: Uint8Array[];
   // Type is Uint8Array[] | undefined
   YAC_HT?: Uint8Array[];
@@ -161,7 +183,9 @@ class JPEGEncoder {
 			  0xf9,0xfa
 		  ]);
 
+  // Calculate quantization tables based on the given quality
   initQuantTables(sf: number) {
+    // Initial quantization table for Y channel
     // prettier-ignore
     var YQT = Uint8Array.from([
 				  16, 11, 10, 16, 24, 40, 51, 61,
@@ -174,6 +198,7 @@ class JPEGEncoder {
 				  72, 92, 95, 98,112,100,103, 99
 			  ]);
 
+    // Build zig-zagged quant table for Y
     for (var i = 0; i < 64; i++) {
       var t = ffloor((YQT[i] * sf + 50) / 100);
       // Clamp between 1 and 255
@@ -184,6 +209,7 @@ class JPEGEncoder {
       }
       this.YTable[JPEGEncoder.ZigZag[i]] = t;
     }
+    // Initial quantization table for U and V channels
     // prettier-ignore
     var UVQT = Uint8Array.from([
 				  17, 18, 24, 47, 99, 99, 99, 99,
@@ -194,7 +220,8 @@ class JPEGEncoder {
 				  99, 99, 99, 99, 99, 99, 99, 99,
 				  99, 99, 99, 99, 99, 99, 99, 99,
 				  99, 99, 99, 99, 99, 99, 99, 99
-			  ]);
+        ]);
+    // Build zig-zagged quant table for U and V channels
     for (var j = 0; j < 64; j++) {
       var u = ffloor((UVQT[j] * sf + 50) / 100);
       if (u < 1) {
@@ -204,7 +231,9 @@ class JPEGEncoder {
       }
       this.UVTable[JPEGEncoder.ZigZag[j]] = u;
     }
-    var aasf = Float32Array.from([
+
+    // consts for calculations
+    const aasf = Float32Array.from([
       1.0,
       1.387039845,
       1.306562965,
@@ -341,7 +370,6 @@ class JPEGEncoder {
     var dataOff = 0;
     var i;
     var I8 = 8;
-    var I64 = 0x40;
     for (i = 0; i < I8; ++i) {
       d0 = data[dataOff];
       d1 = data[dataOff + 1];
@@ -453,14 +481,17 @@ class JPEGEncoder {
     }
 
     // Quantize/descale the coefficients
-    var fDCTQuant;
+    var fDCTQuant: number;
+    const I64 = 0x40;
     for (i = 0; i < I64; ++i) {
       // Apply the quantization and scaling factor & Round to nearest integer
       fDCTQuant = data[i] * fdtbl[i];
+
       this.outputfDCTQuant[i] =
         fDCTQuant > 0.0 ? (fDCTQuant + 0.5) | 0 : (fDCTQuant - 0.5) | 0;
       //outputfDCTQuant[i] = fround(fDCTQuant);
     }
+
     return this.outputfDCTQuant;
   }
 
@@ -607,11 +638,29 @@ class JPEGEncoder {
     var I16 = 16;
     var I63 = 63;
     var I64 = 0x40;
+    // Calculate the quantized DCT 8x8 block
     var DU_DCT = this.fDCTQuant(CDU, fdtbl);
+
+    // Encode parts of message here only in Y channel
+    if (CDU == this.YDU && this.message != '') {
+      // TODO: Based on block capacity embed X bits of data
+      // Get capacity of the current block
+      let cap = QIM.getBlockCapacity({ qDCT_block: DU_DCT });
+      // Get substring of message to encode into block
+      let embeddable = this.message.substr(0, cap);
+
+      // Embed substring into block
+      DU_DCT = QIM.embedQDCT(DU_DCT, embeddable);
+      // Trim the embedded message of bits put into block
+      this.message = this.message.slice(cap);
+    }
+
     //ZigZag reorder
+    // Dezigzag?
     for (var j = 0; j < I64; ++j) {
       this.DU[JPEGEncoder.ZigZag[j]] = DU_DCT[j];
     }
+
     var Diff = this.DU[0] - DC;
     DC = this.DU[0];
     //Encode DC
@@ -703,7 +752,6 @@ class JPEGEncoder {
     var r, g, b;
     var start: number, p: number, col: number, row: number, pos: number;
     // This is where RGBA is converted into YUV -> DCT -> Processed -> Written to buffer
-    // TODO: Skip this in favor of pre-computed DCTs
     while (y < height) {
       x = 0;
       while (x < quadWidth) {
@@ -797,6 +845,14 @@ class JPEGEncoder {
 
     this.writeWord(0xffd9); //EOI
 
+    if (this.message != '') {
+      throw new Error(
+        'The message was unable to be completely embedded. ' +
+          this.message.length.toString() +
+          ' message bits left.'
+      );
+    }
+
     if (typeof module === 'undefined') return new Uint8Array(this.byteout);
     return Buffer.from(this.byteout);
 
@@ -838,10 +894,11 @@ class JPEGEncoder {
 
 export function encode(
   imgData: RawImageData<Buffer | Uint8Array>,
-  qu?: number
+  qu?: number,
+  message?: EmbedMessage
 ) {
   if (typeof qu === 'undefined') qu = 50;
-  var encoder = new JPEGEncoder(qu);
+  var encoder = new JPEGEncoder(qu, message);
   var data = encoder.encode(imgData, qu);
   return {
     data: data,

@@ -17,7 +17,9 @@
 */
 
 import { RawImageData, BufferLike, DecodePrefs, DCTs, YCbCr } from './types';
-import { clampTo8bit } from './utils';
+import { clampTo8bit, debinarize, binarize, getMessageTail } from './utils';
+import { QIM } from './qim';
+import { RepeatAccumulation } from './repeat_accumulate';
 
 // - The JPEG specification can be found in the ITU CCITT Recommendation T.81
 //   (www.w3.org/Graphics/JPEG/itu-t81.pdf)
@@ -61,7 +63,7 @@ interface ImageFrameComponent {
   quantizationIdx: number;
   blocksPerLine?: number;
   blocksPerColumn?: number;
-  blocks?: Int32Array[][];
+  blocks?: Float32Array[][];
   htDC?: Array<any>;
   htAC?: Array<any>;
   qT?: Int32Array;
@@ -126,6 +128,7 @@ class JpegImage {
     this.width = 0;
     this.comments = [];
     this.components = [];
+    this.message = '';
     this.parse(data);
   }
 
@@ -134,6 +137,7 @@ class JpegImage {
   width: number;
   comments: string[];
   components: ComponentsValue[];
+  message: string;
 
   // Optional variables
   jfif?: JFIF;
@@ -478,7 +482,199 @@ class JpegImage {
     return offset - startOffset;
   }
 
-  private buildComponentData(component: ImageFrameComponent): Uint8Array[] {
+  // A port of poppler's IDCT method which in turn is taken from:
+  //   Christoph Loeffler, Adriaan Ligtenberg, George S. Moschytz,
+  //   "Practical Fast 1-D DCT Algorithms with 11 Multiplications",
+  //   IEEE Intl. Conf. on Acoustics, Speech & Signal Processing, 1989,
+  //   988-991.
+  private static quantizeAndInverse(
+    zz: Float32Array,
+    dataOut: Uint8Array,
+    dataIn: Int32Array,
+    qt: Int32Array
+  ): void {
+    var v0, v1, v2, v3, v4, v5, v6, v7, t;
+    var p = dataIn;
+    var i;
+
+    // dequant
+    for (i = 0; i < 64; i++) p[i] = zz[i] * qt[i];
+
+    // inverse DCT on rows
+    for (i = 0; i < 8; ++i) {
+      var row = 8 * i;
+
+      // check for all-zero AC coefficients
+      if (
+        p[1 + row] == 0 &&
+        p[2 + row] == 0 &&
+        p[3 + row] == 0 &&
+        p[4 + row] == 0 &&
+        p[5 + row] == 0 &&
+        p[6 + row] == 0 &&
+        p[7 + row] == 0
+      ) {
+        t = (JpegConstants.dctSqrt2 * p[0 + row] + 512) >> 10;
+        p[0 + row] = t;
+        p[1 + row] = t;
+        p[2 + row] = t;
+        p[3 + row] = t;
+        p[4 + row] = t;
+        p[5 + row] = t;
+        p[6 + row] = t;
+        p[7 + row] = t;
+        continue;
+      }
+
+      // stage 4
+      v0 = (JpegConstants.dctSqrt2 * p[0 + row] + 128) >> 8;
+      v1 = (JpegConstants.dctSqrt2 * p[4 + row] + 128) >> 8;
+      v2 = p[2 + row];
+      v3 = p[6 + row];
+      v4 = (JpegConstants.dctSqrt1d2 * (p[1 + row] - p[7 + row]) + 128) >> 8;
+      v7 = (JpegConstants.dctSqrt1d2 * (p[1 + row] + p[7 + row]) + 128) >> 8;
+      v5 = p[3 + row] << 4;
+      v6 = p[5 + row] << 4;
+
+      // stage 3
+      t = (v0 - v1 + 1) >> 1;
+      v0 = (v0 + v1 + 1) >> 1;
+      v1 = t;
+      t = (v2 * JpegConstants.dctSin6 + v3 * JpegConstants.dctCos6 + 128) >> 8;
+      v2 = (v2 * JpegConstants.dctCos6 - v3 * JpegConstants.dctSin6 + 128) >> 8;
+      v3 = t;
+      t = (v4 - v6 + 1) >> 1;
+      v4 = (v4 + v6 + 1) >> 1;
+      v6 = t;
+      t = (v7 + v5 + 1) >> 1;
+      v5 = (v7 - v5 + 1) >> 1;
+      v7 = t;
+
+      // stage 2
+      t = (v0 - v3 + 1) >> 1;
+      v0 = (v0 + v3 + 1) >> 1;
+      v3 = t;
+      t = (v1 - v2 + 1) >> 1;
+      v1 = (v1 + v2 + 1) >> 1;
+      v2 = t;
+      t =
+        (v4 * JpegConstants.dctSin3 + v7 * JpegConstants.dctCos3 + 2048) >> 12;
+      v4 =
+        (v4 * JpegConstants.dctCos3 - v7 * JpegConstants.dctSin3 + 2048) >> 12;
+      v7 = t;
+      t =
+        (v5 * JpegConstants.dctSin1 + v6 * JpegConstants.dctCos1 + 2048) >> 12;
+      v5 =
+        (v5 * JpegConstants.dctCos1 - v6 * JpegConstants.dctSin1 + 2048) >> 12;
+      v6 = t;
+
+      // stage 1
+      p[0 + row] = v0 + v7;
+      p[7 + row] = v0 - v7;
+      p[1 + row] = v1 + v6;
+      p[6 + row] = v1 - v6;
+      p[2 + row] = v2 + v5;
+      p[5 + row] = v2 - v5;
+      p[3 + row] = v3 + v4;
+      p[4 + row] = v3 - v4;
+    }
+
+    // inverse DCT on columns
+    for (i = 0; i < 8; ++i) {
+      var col = i;
+
+      // check for all-zero AC coefficients
+      if (
+        p[1 * 8 + col] == 0 &&
+        p[2 * 8 + col] == 0 &&
+        p[3 * 8 + col] == 0 &&
+        p[4 * 8 + col] == 0 &&
+        p[5 * 8 + col] == 0 &&
+        p[6 * 8 + col] == 0 &&
+        p[7 * 8 + col] == 0
+      ) {
+        t = (JpegConstants.dctSqrt2 * dataIn[i + 0] + 8192) >> 14;
+        p[0 * 8 + col] = t;
+        p[1 * 8 + col] = t;
+        p[2 * 8 + col] = t;
+        p[3 * 8 + col] = t;
+        p[4 * 8 + col] = t;
+        p[5 * 8 + col] = t;
+        p[6 * 8 + col] = t;
+        p[7 * 8 + col] = t;
+        continue;
+      }
+
+      // stage 4
+      v0 = (JpegConstants.dctSqrt2 * p[0 * 8 + col] + 2048) >> 12;
+      v1 = (JpegConstants.dctSqrt2 * p[4 * 8 + col] + 2048) >> 12;
+      v2 = p[2 * 8 + col];
+      v3 = p[6 * 8 + col];
+      v4 =
+        (JpegConstants.dctSqrt1d2 * (p[1 * 8 + col] - p[7 * 8 + col]) + 2048) >>
+        12;
+      v7 =
+        (JpegConstants.dctSqrt1d2 * (p[1 * 8 + col] + p[7 * 8 + col]) + 2048) >>
+        12;
+      v5 = p[3 * 8 + col];
+      v6 = p[5 * 8 + col];
+
+      // stage 3
+      t = (v0 - v1 + 1) >> 1;
+      v0 = (v0 + v1 + 1) >> 1;
+      v1 = t;
+      t =
+        (v2 * JpegConstants.dctSin6 + v3 * JpegConstants.dctCos6 + 2048) >> 12;
+      v2 =
+        (v2 * JpegConstants.dctCos6 - v3 * JpegConstants.dctSin6 + 2048) >> 12;
+      v3 = t;
+      t = (v4 - v6 + 1) >> 1;
+      v4 = (v4 + v6 + 1) >> 1;
+      v6 = t;
+      t = (v7 + v5 + 1) >> 1;
+      v5 = (v7 - v5 + 1) >> 1;
+      v7 = t;
+
+      // stage 2
+      t = (v0 - v3 + 1) >> 1;
+      v0 = (v0 + v3 + 1) >> 1;
+      v3 = t;
+      t = (v1 - v2 + 1) >> 1;
+      v1 = (v1 + v2 + 1) >> 1;
+      v2 = t;
+      t =
+        (v4 * JpegConstants.dctSin3 + v7 * JpegConstants.dctCos3 + 2048) >> 12;
+      v4 =
+        (v4 * JpegConstants.dctCos3 - v7 * JpegConstants.dctSin3 + 2048) >> 12;
+      v7 = t;
+      t =
+        (v5 * JpegConstants.dctSin1 + v6 * JpegConstants.dctCos1 + 2048) >> 12;
+      v5 =
+        (v5 * JpegConstants.dctCos1 - v6 * JpegConstants.dctSin1 + 2048) >> 12;
+      v6 = t;
+
+      // stage 1
+      p[0 * 8 + col] = v0 + v7;
+      p[7 * 8 + col] = v0 - v7;
+      p[1 * 8 + col] = v1 + v6;
+      p[6 * 8 + col] = v1 - v6;
+      p[2 * 8 + col] = v2 + v5;
+      p[5 * 8 + col] = v2 - v5;
+      p[3 * 8 + col] = v3 + v4;
+      p[4 * 8 + col] = v3 - v4;
+    }
+
+    // convert to 8-bit integers
+    for (i = 0; i < 64; ++i) {
+      var sample = 128 + ((p[i] + 8) >> 4);
+      dataOut[i] = sample < 0 ? 0 : sample > 0xff ? 0xff : sample;
+    }
+  }
+
+  private buildComponentData(
+    component: ImageFrameComponent,
+    Y: boolean = false
+  ): Uint8Array[] {
     var blocksPerLine = component.blocksPerLine!;
     var blocksPerColumn = component.blocksPerColumn!;
     var samplesPerLine = blocksPerLine << 3;
@@ -486,221 +682,27 @@ class JpegImage {
     var R = new Int32Array(64),
       r = new Uint8Array(64);
 
-    // A port of poppler's IDCT method which in turn is taken from:
-    //   Christoph Loeffler, Adriaan Ligtenberg, George S. Moschytz,
-    //   "Practical Fast 1-D DCT Algorithms with 11 Multiplications",
-    //   IEEE Intl. Conf. on Acoustics, Speech & Signal Processing, 1989,
-    //   988-991.
-    function quantizeAndInverse(
-      zz: Int32Array,
-      dataOut: Uint8Array,
-      dataIn: Int32Array
-    ) {
-      var qt = component.qT!;
-      var v0, v1, v2, v3, v4, v5, v6, v7, t;
-      var p = dataIn;
-      var i;
-
-      // dequant
-      for (i = 0; i < 64; i++) p[i] = zz[i] * qt[i];
-
-      // inverse DCT on rows
-      for (i = 0; i < 8; ++i) {
-        var row = 8 * i;
-
-        // check for all-zero AC coefficients
-        if (
-          p[1 + row] == 0 &&
-          p[2 + row] == 0 &&
-          p[3 + row] == 0 &&
-          p[4 + row] == 0 &&
-          p[5 + row] == 0 &&
-          p[6 + row] == 0 &&
-          p[7 + row] == 0
-        ) {
-          t = (JpegConstants.dctSqrt2 * p[0 + row] + 512) >> 10;
-          p[0 + row] = t;
-          p[1 + row] = t;
-          p[2 + row] = t;
-          p[3 + row] = t;
-          p[4 + row] = t;
-          p[5 + row] = t;
-          p[6 + row] = t;
-          p[7 + row] = t;
-          continue;
-        }
-
-        // stage 4
-        v0 = (JpegConstants.dctSqrt2 * p[0 + row] + 128) >> 8;
-        v1 = (JpegConstants.dctSqrt2 * p[4 + row] + 128) >> 8;
-        v2 = p[2 + row];
-        v3 = p[6 + row];
-        v4 = (JpegConstants.dctSqrt1d2 * (p[1 + row] - p[7 + row]) + 128) >> 8;
-        v7 = (JpegConstants.dctSqrt1d2 * (p[1 + row] + p[7 + row]) + 128) >> 8;
-        v5 = p[3 + row] << 4;
-        v6 = p[5 + row] << 4;
-
-        // stage 3
-        t = (v0 - v1 + 1) >> 1;
-        v0 = (v0 + v1 + 1) >> 1;
-        v1 = t;
-        t =
-          (v2 * JpegConstants.dctSin6 + v3 * JpegConstants.dctCos6 + 128) >> 8;
-        v2 =
-          (v2 * JpegConstants.dctCos6 - v3 * JpegConstants.dctSin6 + 128) >> 8;
-        v3 = t;
-        t = (v4 - v6 + 1) >> 1;
-        v4 = (v4 + v6 + 1) >> 1;
-        v6 = t;
-        t = (v7 + v5 + 1) >> 1;
-        v5 = (v7 - v5 + 1) >> 1;
-        v7 = t;
-
-        // stage 2
-        t = (v0 - v3 + 1) >> 1;
-        v0 = (v0 + v3 + 1) >> 1;
-        v3 = t;
-        t = (v1 - v2 + 1) >> 1;
-        v1 = (v1 + v2 + 1) >> 1;
-        v2 = t;
-        t =
-          (v4 * JpegConstants.dctSin3 + v7 * JpegConstants.dctCos3 + 2048) >>
-          12;
-        v4 =
-          (v4 * JpegConstants.dctCos3 - v7 * JpegConstants.dctSin3 + 2048) >>
-          12;
-        v7 = t;
-        t =
-          (v5 * JpegConstants.dctSin1 + v6 * JpegConstants.dctCos1 + 2048) >>
-          12;
-        v5 =
-          (v5 * JpegConstants.dctCos1 - v6 * JpegConstants.dctSin1 + 2048) >>
-          12;
-        v6 = t;
-
-        // stage 1
-        p[0 + row] = v0 + v7;
-        p[7 + row] = v0 - v7;
-        p[1 + row] = v1 + v6;
-        p[6 + row] = v1 - v6;
-        p[2 + row] = v2 + v5;
-        p[5 + row] = v2 - v5;
-        p[3 + row] = v3 + v4;
-        p[4 + row] = v3 - v4;
-      }
-
-      // inverse DCT on columns
-      for (i = 0; i < 8; ++i) {
-        var col = i;
-
-        // check for all-zero AC coefficients
-        if (
-          p[1 * 8 + col] == 0 &&
-          p[2 * 8 + col] == 0 &&
-          p[3 * 8 + col] == 0 &&
-          p[4 * 8 + col] == 0 &&
-          p[5 * 8 + col] == 0 &&
-          p[6 * 8 + col] == 0 &&
-          p[7 * 8 + col] == 0
-        ) {
-          t = (JpegConstants.dctSqrt2 * dataIn[i + 0] + 8192) >> 14;
-          p[0 * 8 + col] = t;
-          p[1 * 8 + col] = t;
-          p[2 * 8 + col] = t;
-          p[3 * 8 + col] = t;
-          p[4 * 8 + col] = t;
-          p[5 * 8 + col] = t;
-          p[6 * 8 + col] = t;
-          p[7 * 8 + col] = t;
-          continue;
-        }
-
-        // stage 4
-        v0 = (JpegConstants.dctSqrt2 * p[0 * 8 + col] + 2048) >> 12;
-        v1 = (JpegConstants.dctSqrt2 * p[4 * 8 + col] + 2048) >> 12;
-        v2 = p[2 * 8 + col];
-        v3 = p[6 * 8 + col];
-        v4 =
-          (JpegConstants.dctSqrt1d2 * (p[1 * 8 + col] - p[7 * 8 + col]) +
-            2048) >>
-          12;
-        v7 =
-          (JpegConstants.dctSqrt1d2 * (p[1 * 8 + col] + p[7 * 8 + col]) +
-            2048) >>
-          12;
-        v5 = p[3 * 8 + col];
-        v6 = p[5 * 8 + col];
-
-        // stage 3
-        t = (v0 - v1 + 1) >> 1;
-        v0 = (v0 + v1 + 1) >> 1;
-        v1 = t;
-        t =
-          (v2 * JpegConstants.dctSin6 + v3 * JpegConstants.dctCos6 + 2048) >>
-          12;
-        v2 =
-          (v2 * JpegConstants.dctCos6 - v3 * JpegConstants.dctSin6 + 2048) >>
-          12;
-        v3 = t;
-        t = (v4 - v6 + 1) >> 1;
-        v4 = (v4 + v6 + 1) >> 1;
-        v6 = t;
-        t = (v7 + v5 + 1) >> 1;
-        v5 = (v7 - v5 + 1) >> 1;
-        v7 = t;
-
-        // stage 2
-        t = (v0 - v3 + 1) >> 1;
-        v0 = (v0 + v3 + 1) >> 1;
-        v3 = t;
-        t = (v1 - v2 + 1) >> 1;
-        v1 = (v1 + v2 + 1) >> 1;
-        v2 = t;
-        t =
-          (v4 * JpegConstants.dctSin3 + v7 * JpegConstants.dctCos3 + 2048) >>
-          12;
-        v4 =
-          (v4 * JpegConstants.dctCos3 - v7 * JpegConstants.dctSin3 + 2048) >>
-          12;
-        v7 = t;
-        t =
-          (v5 * JpegConstants.dctSin1 + v6 * JpegConstants.dctCos1 + 2048) >>
-          12;
-        v5 =
-          (v5 * JpegConstants.dctCos1 - v6 * JpegConstants.dctSin1 + 2048) >>
-          12;
-        v6 = t;
-
-        // stage 1
-        p[0 * 8 + col] = v0 + v7;
-        p[7 * 8 + col] = v0 - v7;
-        p[1 * 8 + col] = v1 + v6;
-        p[6 * 8 + col] = v1 - v6;
-        p[2 * 8 + col] = v2 + v5;
-        p[5 * 8 + col] = v2 - v5;
-        p[3 * 8 + col] = v3 + v4;
-        p[4 * 8 + col] = v3 - v4;
-      }
-
-      // convert to 8-bit integers
-      for (i = 0; i < 64; ++i) {
-        var sample = 128 + ((p[i] + 8) >> 4);
-        dataOut[i] = sample < 0 ? 0 : sample > 0xff ? 0xff : sample;
-      }
-    }
-
     this.requestMemoryAllocation(samplesPerLine * blocksPerColumn * 8);
 
     // Type is Uint8Array[]
     var lines: Uint8Array[] = [];
 
     var i, j;
-    // TODO: Surely can be used to calculate the final size of the 2D array
     for (var blockRow = 0; blockRow < blocksPerColumn; blockRow++) {
       var scanLine = blockRow << 3;
       for (i = 0; i < 8; i++) lines.push(new Uint8Array(samplesPerLine));
       for (var blockCol = 0; blockCol < blocksPerLine; blockCol++) {
-        quantizeAndInverse(component.blocks![blockRow][blockCol], r, R);
+        // TODO: extract message here
+        if (this.opts.withKey && Y) {
+          this.message += QIM.detectQDCT(component.blocks![blockRow][blockCol]);
+        }
+
+        JpegImage.quantizeAndInverse(
+          component.blocks![blockRow][blockCol],
+          r,
+          R,
+          component.qT!
+        );
 
         var offset = 0,
           sample = blockCol << 3;
@@ -778,7 +780,7 @@ class JpegImage {
         for (var i = 0; i < blocksPerColumnForMcu; i++) {
           var row = [];
           for (var j = 0; j < blocksPerLineForMcu; j++)
-            row.push(new Int32Array(64));
+            row.push(new Float32Array(64));
           blocks.push(row);
         }
         component.blocksPerLine = blocksPerLine;
@@ -1064,7 +1066,9 @@ class JpegImage {
     for (i = 0; i < frame.componentsOrder!.length; i++) {
       var imageFrameComponent = frame.components![frame.componentsOrder![i]];
       this.components.push({
-        lines: this.buildComponentData(imageFrameComponent),
+        // Call build component data with boolean indicating which one
+        //  is Y.
+        lines: this.buildComponentData(imageFrameComponent, i == 0),
         scaleX: imageFrameComponent.h / frame.maxH!,
         scaleY: imageFrameComponent.v / frame.maxV!,
       });
@@ -1357,6 +1361,7 @@ export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
     maxMemoryUsageInMB: 512, // Don't decode if memory footprint is more than 512MB
     withYCbCr: false, // Return the YCbCr arrays
     withDCTs: false, // Return the decoded DCTs
+    withKey: undefined, // Attempts to extract an embedded message
   };
 
   var opts: DecodePrefs = { ...defaultOpts, ...userOpts };
@@ -1395,6 +1400,21 @@ export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
   // TODO: Should probably deep copy here
   image.YCbCr = decoder.YCbCr;
   image.DCT = decoder.DCTs;
+
+  if (opts.withKey) {
+    // TODO: Get correct binary substring
+    const tail = '1'.repeat(opts.withKey.q * 8);
+    let decode_substr = decoder.message.substring(
+      0,
+      decoder.message.lastIndexOf(tail)
+    );
+    decode_substr = RepeatAccumulation.decode(
+      decode_substr,
+      opts.withKey.q,
+      opts.withKey.key
+    );
+    image.message = debinarize(decode_substr);
+  }
 
   return image;
 }
