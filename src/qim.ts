@@ -156,7 +156,7 @@ export class QIM {
     embeddable.forEach((coef) => {
       if (coef.t) {
         qDCT_block[coef.idx] = coef.rk;
-      } else {
+      } else if (data.charAt(i)) {
         qDCT_block[coef.idx] = QIM.embed(
           qDCT_block[coef.idx],
           Number.parseInt(data.charAt(i)),
@@ -165,6 +165,15 @@ export class QIM {
         ++i;
       }
     });
+
+    if (qDCT_block.includes(Number.NaN)) {
+      throw Error(
+        'data: ' +
+          data +
+          '\nEmbedding failed on table:\n' +
+          qDCT_block.toString()
+      );
+    }
 
     return qDCT_block;
   }

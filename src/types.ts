@@ -21,6 +21,12 @@ export interface YCbCr {
   Cr?: Uint8Array[];
 }
 
+export interface EmbedMessage {
+  str: string;
+  key: string;
+  q: number;
+}
+
 export interface DecodePrefs {
   // "undefined" means "Choose whether to transform colors based on the image’s color model."
   colorTransform?: boolean;
@@ -31,7 +37,7 @@ export interface DecodePrefs {
   maxMemoryUsageInMB?: number; // Don't decode if memory footprint is more than 512MB
   withYCbCr?: boolean; // Return the YCbCr arrays
   withDCTs?: boolean; // Return the decoded DCTs
-  getMessage?: boolean;
+  withKey?: { key: string; q: number };
 }
 
 export type BufferRet = RawImageData<Buffer>;

@@ -35,9 +35,10 @@ JPEG encoder ported to JavaScript and optimized by Andreas Ritter, www.bytestrom
 Basic GUI blocking jpeg encoder
 */
 
-import { RawImageData, BufferLike } from './types';
+import { RawImageData, EmbedMessage } from './types';
 import { QIM } from './qim';
-import { binarize } from './utils';
+import { binarize, addMessageTail } from './utils';
+import { RepeatAccumulation } from './repeat_accumulate';
 
 // var btoa =
 //   btoa ||
@@ -49,7 +50,7 @@ var fround = Math.round;
 var ffloor = Math.floor;
 
 class JPEGEncoder {
-  constructor(quality: number, message?: string) {
+  constructor(quality: number, message?: EmbedMessage) {
     var time_start = new Date().getTime();
     if (!quality) quality = 50;
     // Create tables
@@ -58,9 +59,19 @@ class JPEGEncoder {
     this.initCategoryNumber();
     this.initRGBYUVTable();
     this.setQuality(quality);
-    var duration = new Date().getTime() - time_start;
+    // var duration = new Date().getTime() - time_start;
     //console.log('Initialization '+ duration + 'ms');
-    this.message = message ? binarize(message) : '';
+    this.message = message
+      ? addMessageTail(
+          RepeatAccumulation.encode(
+            binarize(message.str),
+            message.q,
+            message.key
+          ).message,
+          message.q
+        )
+      : '';
+    console.log(this.message);
   }
 
   // Variables for data embedding
@@ -885,7 +896,7 @@ class JPEGEncoder {
 export function encode(
   imgData: RawImageData<Buffer | Uint8Array>,
   qu?: number,
-  message?: string
+  message?: EmbedMessage
 ) {
   if (typeof qu === 'undefined') qu = 50;
   var encoder = new JPEGEncoder(qu, message);

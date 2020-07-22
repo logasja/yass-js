@@ -17,8 +17,9 @@
 */
 
 import { RawImageData, BufferLike, DecodePrefs, DCTs, YCbCr } from './types';
-import { clampTo8bit, debinarize } from './utils';
+import { clampTo8bit, debinarize, binarize } from './utils';
 import { QIM } from './qim';
+import { RepeatAccumulation } from './repeat_accumulate';
 
 // - The JPEG specification can be found in the ITU CCITT Recommendation T.81
 //   (www.w3.org/Graphics/JPEG/itu-t81.pdf)
@@ -692,7 +693,7 @@ class JpegImage {
       for (i = 0; i < 8; i++) lines.push(new Uint8Array(samplesPerLine));
       for (var blockCol = 0; blockCol < blocksPerLine; blockCol++) {
         // TODO: extract message here
-        if (this.opts.getMessage && Y) {
+        if (this.opts.withKey && Y) {
           this.message += QIM.detectQDCT(component.blocks![blockRow][blockCol]);
         }
 
@@ -1360,7 +1361,7 @@ export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
     maxMemoryUsageInMB: 512, // Don't decode if memory footprint is more than 512MB
     withYCbCr: false, // Return the YCbCr arrays
     withDCTs: false, // Return the decoded DCTs
-    getMessage: false, // Attempts to extract an embedded message
+    withKey: undefined, // Attempts to extract an embedded message
   };
 
   var opts: DecodePrefs = { ...defaultOpts, ...userOpts };
@@ -1399,7 +1400,24 @@ export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
   // TODO: Should probably deep copy here
   image.YCbCr = decoder.YCbCr;
   image.DCT = decoder.DCTs;
-  image.message = debinarize(decoder.message);
+
+  if (opts.withKey) {
+    // TODO: Get correct binary substring
+    const start = '\u0002';
+    const end = '\u0003';
+    const first_pass = debinarize(decoder.message);
+    let second_pass = first_pass.substring(
+      first_pass.indexOf(start),
+      first_pass.indexOf(end)
+    );
+    console.log(second_pass);
+    second_pass = RepeatAccumulation.decode(
+      binarize(second_pass),
+      opts.withKey.q,
+      opts.withKey.key
+    );
+    image.message = debinarize(decoder.message);
+  }
 
   return image;
 }

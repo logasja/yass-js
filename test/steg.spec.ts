@@ -3,7 +3,6 @@ var fs = require('fs'),
   jpeg = require('../index');
 import { expect, assert } from 'chai';
 import 'mocha';
-import { isBuffer } from 'util';
 
 function fixture(name: string) {
   return fs.readFileSync(path.join(__dirname, 'fixtures', name));
@@ -17,7 +16,8 @@ describe('Test the embedding of various sizes of messages', () => {
       width: 320,
       height: 180,
     };
-    var jpegImageData = jpeg.encode(rawImageData, 50, 'hello');
+    const embed_obj = { str: 'hello', key: 'AE0F', q: 3 };
+    var jpegImageData = jpeg.encode(rawImageData, 50, embed_obj);
     expect(jpegImageData.width).to.equal(320);
     expect(jpegImageData.height).to.equal(180);
     var expected = fixture('grumpycat-50.jpg');
@@ -29,7 +29,7 @@ describe('Test the embedding of various sizes of messages', () => {
 describe('Test extracting previously embedded messages', () => {
   it('should complete without error and properly read message', () => {
     let fbuf = fs.readFileSync('./test/output_jpgs/grumpy_hello.jpg');
-    var imageData = jpeg.decode(fbuf, { getMessage: true });
+    var imageData = jpeg.decode(fbuf, { withKey: { key: 'AE0F', q: 3 } });
     console.log(imageData);
   });
 });
