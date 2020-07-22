@@ -1,5 +1,9 @@
 .idea*
 .vscode*
+tsconfig.json
+*.md
+index.ts
+.travis.yml
 
 test/
 src/
