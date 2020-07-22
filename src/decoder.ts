@@ -17,7 +17,7 @@
 */
 
 import { RawImageData, BufferLike, DecodePrefs, DCTs, YCbCr } from './types';
-import { clampTo8bit, debinarize, binarize } from './utils';
+import { clampTo8bit, debinarize, binarize, getMessageTail } from './utils';
 import { QIM } from './qim';
 import { RepeatAccumulation } from './repeat_accumulate';
 
@@ -1403,20 +1403,17 @@ export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
 
   if (opts.withKey) {
     // TODO: Get correct binary substring
-    const start = '\u0002';
-    const end = '\u0003';
-    const first_pass = debinarize(decoder.message);
-    let second_pass = first_pass.substring(
-      first_pass.indexOf(start),
-      first_pass.indexOf(end)
+    const tail = '1'.repeat(opts.withKey.q * 8);
+    let decode_substr = decoder.message.substring(
+      0,
+      decoder.message.lastIndexOf(tail)
     );
-    console.log(second_pass);
-    second_pass = RepeatAccumulation.decode(
-      binarize(second_pass),
+    decode_substr = RepeatAccumulation.decode(
+      decode_substr,
       opts.withKey.q,
       opts.withKey.key
     );
-    image.message = debinarize(decoder.message);
+    image.message = debinarize(decode_substr);
   }
 
   return image;

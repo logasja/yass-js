@@ -71,7 +71,6 @@ class JPEGEncoder {
           message.q
         )
       : '';
-    console.log(this.message);
   }
 
   // Variables for data embedding

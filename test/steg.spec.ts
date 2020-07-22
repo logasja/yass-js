@@ -30,6 +30,6 @@ describe('Test extracting previously embedded messages', () => {
   it('should complete without error and properly read message', () => {
     let fbuf = fs.readFileSync('./test/output_jpgs/grumpy_hello.jpg');
     var imageData = jpeg.decode(fbuf, { withKey: { key: 'AE0F', q: 3 } });
-    console.log(imageData);
+    expect(imageData.message).to.equal('hello');
   });
 });
