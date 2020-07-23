@@ -1,11 +1,12 @@
 {
   "name": "yass-js",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "A steganographic encoder and decoder built on top of a jpeg library.",
   "main": "lib/index.js",
   "types": "lib/index.type.ds",
   "scripts": {
     "build": "tsc",
+    "minify": "uglifyjs --compress --mangle --output name.min.js",
     "test": "mocha -r ts-node/register test/*.spec.ts",
     "test:jpeg": "mocha -r ts-node/register test/jpeg.spec.ts",
     "test:qim": "mocha -r ts-node/register test/qim.spec.ts",
@@ -49,7 +50,8 @@
     "mocha": "^8.0.1",
     "prettier": "^2.0.5",
     "ts-node": "^8.10.2",
-    "typescript": "^3.9.7"
+    "typescript": "^3.9.7",
+    "uglify-js": "^3.10.0"
   },
   "husky": {
     "hooks": {

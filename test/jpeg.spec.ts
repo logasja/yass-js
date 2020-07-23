@@ -1,8 +1,8 @@
 var fs = require('fs'),
-  path = require('path'),
-  jpeg = require('../index');
+  path = require('path');
 import { expect, assert } from 'chai';
 import 'mocha';
+import { JPEG } from '../index';
 
 function fixture(name: string) {
   return fs.readFileSync(path.join(__dirname, 'fixtures', name));
@@ -15,7 +15,7 @@ const SUPER_LARGE_JPEG_BUFFER = Buffer.from(SUPER_LARGE_JPEG_BASE64, 'base64');
 describe('Jpeg tests', () => {
   it('should be able to decode a JPEG', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(320);
     expect(rawImageData.height).to.equal(180);
     var expected = fixture('grumpycat.rgba');
@@ -24,30 +24,30 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a JPEG with fill bytes', function () {
     var jpegData = fixture('fillbytes.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(704);
     expect(rawImageData.height).to.equal(576);
   });
 
   it('should be able to decode a JPEG with RST intervals', function () {
     var jpegData = fixture('redbox-with-rst.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     var expected = fixture('redbox.jpg');
-    var rawExpectedImageData = jpeg.decode(expected);
+    var rawExpectedImageData = JPEG.decode(expected);
     expect(rawImageData.data).to.deep.equal(rawExpectedImageData.data);
   });
 
   it('should be able to decode a JPEG with trailing bytes', function () {
     var jpegData = fixture('redbox-with-trailing-bytes.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     var expected = fixture('redbox.jpg');
-    var rawExpectedImageData = jpeg.decode(expected);
+    var rawExpectedImageData = JPEG.decode(expected);
     expect(rawImageData.data).to.deep.equal(rawExpectedImageData.data);
   });
 
   it('should be able to decode a grayscale JPEG', function () {
     var jpegData = fixture('apsara.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(580);
     expect(rawImageData.height).to.equal(599);
     // No longer available with a comment
@@ -58,7 +58,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a CMYK jpeg with correct colors', function () {
     var jpegData = fixture('tree-cmyk.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(400);
     expect(rawImageData.height).to.equal(250);
     var expected = fixture('tree-cmyk.cmyk');
@@ -67,7 +67,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a CMYK jpeg with correct colors without transform', function () {
     var jpegData = fixture('tree-cmyk-notransform.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(400);
     expect(rawImageData.height).to.equal(250);
     var expected = fixture('tree-cmyk-notransform.cmyk');
@@ -76,7 +76,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode an RGB jpeg with correct colors', function () {
     var jpegData = fixture('tree-rgb.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(400);
     expect(rawImageData.height).to.equal(250);
     var expected = fixture('tree-rgb.rgba');
@@ -85,7 +85,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a greyscale CMYK jpeg with correct colors', function () {
     var jpegData = fixture('cmyk-grey.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(300);
     expect(rawImageData.height).to.equal(389);
     var expected = fixture('cmyk-grey.cmyk');
@@ -94,14 +94,14 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode an adobe CMYK jpeg with correct colors', function () {
     var jpegData = fixture('cmyktest.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(300);
     expect(rawImageData.height).to.equal(111);
     var expected = fixture('cmyktest.cmyk');
     expect(rawImageData.data).to.deep.equal(expected);
 
     var jpegData2 = fixture('plusshelf-drawing.jpg');
-    var rawImageData2 = jpeg.decode(jpegData2);
+    var rawImageData2 = JPEG.decode(jpegData2);
     expect(rawImageData2.width).to.equal(350);
     expect(rawImageData2.height).to.equal(233);
     var expected2 = fixture('plusshelf-drawing.cmyk');
@@ -110,14 +110,14 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a unconventional table JPEG', function () {
     var jpegData = fixture('unconventional-table.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(1920);
     expect(rawImageData.height).to.equal(1200);
   });
 
   it('should be able to decode a progressive JPEG', function () {
     var jpegData = fixture('skater-progressive.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(256);
     expect(rawImageData.height).to.equal(256);
     var expected = fixture('skater-progressive.rgba');
@@ -126,10 +126,10 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a progressive JPEG the same as non-progressive', function () {
     var jpegData = fixture('skater.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
 
     var otherJpegData = fixture('skater-progressive.jpg');
-    var otherRawImageData = jpeg.decode(otherJpegData);
+    var otherRawImageData = JPEG.decode(otherJpegData);
 
     expect(rawImageData.width).to.equal(otherRawImageData.width);
     expect(rawImageData.height).to.equal(otherRawImageData.height);
@@ -143,7 +143,7 @@ describe('Jpeg tests', () => {
       width: 320,
       height: 180,
     };
-    var jpegImageData = jpeg.encode(rawImageData, 50);
+    var jpegImageData = JPEG.encode(rawImageData, 50);
     expect(jpegImageData.width).to.equal(320);
     expect(jpegImageData.height).to.equal(180);
     var expected = fixture('grumpycat-50.jpg');
@@ -166,7 +166,7 @@ describe('Jpeg tests', () => {
       width: width,
       height: height,
     };
-    var jpegImageData = jpeg.encode(rawImageData, 50);
+    var jpegImageData = JPEG.encode(rawImageData, 50);
     expect(jpegImageData.width).to.equal(width);
     expect(jpegImageData.height).to.equal(height);
     var expected = fixture('redbox.jpg');
@@ -175,7 +175,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a JPEG into a typed array', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(jpegData, { useTArray: true });
+    var rawImageData = JPEG.decode(jpegData, { useTArray: true });
     expect(rawImageData.width).to.equal(320);
     expect(rawImageData.height).to.equal(180);
     var expected = fixture('grumpycat.rgba');
@@ -185,7 +185,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a JPEG from a typed array into a typed array', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    var rawImageData = JPEG.decode(new Uint8Array(jpegData), {
       useTArray: true,
     });
     expect(rawImageData.width).to.equal(320);
@@ -197,7 +197,7 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a JPEG with options', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    var rawImageData = JPEG.decode(new Uint8Array(jpegData), {
       useTArray: true,
       colorTransform: false,
     });
@@ -210,19 +210,19 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a JPEG with YCbCr options', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    var rawImageData = JPEG.decode(new Uint8Array(jpegData), {
       useTArray: true,
       withYCbCr: true,
     });
     expect(rawImageData.width).to.equal(320);
     expect(rawImageData.height).to.equal(180);
-    expect(rawImageData.YCbCr.Y.length).to.deep.equal(180);
-    expect(rawImageData.YCbCr.Y[0].length).to.deep.equal(320);
+    expect(rawImageData.YCbCr!.Y.length).to.deep.equal(180);
+    expect(rawImageData.YCbCr!.Y[0].length).to.deep.equal(320);
   });
 
   // it('should be able to encode a JPEG with YCbCr input', function () {
   //   var jpegData = fixture('grumpycat.jpg');
-  //   var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+  //   var rawImageData = JPEG.decode(new Uint8Array(jpegData), {
   //     useTArray: true,
   //     withYCbCr: true,
   //   });
@@ -236,16 +236,16 @@ describe('Jpeg tests', () => {
 
   it('should be able to decode a JPEG with DCT options', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    var rawImageData = JPEG.decode(new Uint8Array(jpegData), {
       useTArray: true,
       withDCTs: true,
     });
-    expect(rawImageData.DCT.Y[0][0].length).to.deep.equal(64);
+    expect(rawImageData.DCT!.Y[0][0].length).to.deep.equal(64);
   });
 
   it('should be able to decode a JPEG into RGB', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var rawImageData = jpeg.decode(new Uint8Array(jpegData), {
+    var rawImageData = JPEG.decode(new Uint8Array(jpegData), {
       useTArray: true,
       formatAsRGBA: false,
     });
@@ -258,34 +258,34 @@ describe('Jpeg tests', () => {
 
   it('should be able to encode/decode image with exif data', function () {
     var jpegData = fixture('grumpycat.jpg');
-    var imageData = jpeg.decode(new Uint8Array(jpegData));
+    var imageData = JPEG.decode(new Uint8Array(jpegData));
     assert.ok(imageData.exif, 'decodes an exif buffer');
-    var encodedData = jpeg.encode(imageData);
-    var loopImageData = jpeg.decode(new Uint8Array(encodedData.data));
+    var encodedData = JPEG.encode(imageData);
+    var loopImageData = JPEG.decode(new Uint8Array(encodedData.data));
     expect(loopImageData.exif).to.deep.equal(imageData.exif);
   });
 
   it('should be able to decode large images within memory limits', () => {
     var jpegData = fixture('black-6000x6000.jpg');
-    var rawImageData = jpeg.decode(jpegData);
+    var rawImageData = JPEG.decode(jpegData);
     expect(rawImageData.width).to.equal(6000);
     expect(rawImageData.height).to.equal(6000);
   }).timeout(5000);
 
   // See https://github.com/eugeneware/jpeg-js/issues/53
   it('should limit resolution exposure', function () {
-    expect(() => jpeg.decode(SUPER_LARGE_JPEG_BUFFER)).to.throw(
+    expect(() => JPEG.decode(SUPER_LARGE_JPEG_BUFFER)).to.throw(
       'maxResolutionInMP limit exceeded by 141MP'
     );
   });
 
   it('should limit memory exposure', function () {
     expect(() =>
-      jpeg.decode(SUPER_LARGE_JPEG_BUFFER, { maxResolutionInMP: 500 })
+      JPEG.decode(SUPER_LARGE_JPEG_BUFFER, { maxResolutionInMP: 500 })
     ).to.throw(/maxMemoryUsageInMB limit exceeded by at least \d+MB/);
 
     // Make sure the limit resets each decode.
     var jpegData = fixture('grumpycat.jpg');
-    expect(() => jpeg.decode(jpegData)).not.to.throw();
+    expect(() => JPEG.decode(jpegData)).not.to.throw();
   }).timeout(3000);
 });

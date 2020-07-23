@@ -1,7 +1,36 @@
 import { encode } from './src/encoder';
 import { decode } from './src/decoder';
+import { RawImageData, EmbedMessage, DecodePrefs } from './src/types';
 
-module.exports = {
-  encode: encode,
-  decode: decode,
-};
+export class YASS {
+  static encode(
+    imgData: RawImageData<Buffer | Uint8Array>,
+    qu?: number,
+    message?: EmbedMessage
+  ): { data: Buffer | Uint8Array; width: number; height: number } {
+    return encode(imgData, qu, message);
+  }
+
+  static decode(
+    jpegData: Buffer | Uint8Array,
+    userOpts?: DecodePrefs
+  ): RawImageData<Buffer | Uint8Array> {
+    return decode(Buffer.from(jpegData), userOpts);
+  }
+}
+
+export class JPEG {
+  static encode(
+    imgData: RawImageData<Buffer | Uint8Array>,
+    qu?: number
+  ): { data: Buffer | Uint8Array; width: number; height: number } {
+    return encode(imgData, qu);
+  }
+
+  static decode(
+    jpegData: Buffer | Uint8Array,
+    userOpts?: DecodePrefs
+  ): RawImageData<Buffer | Uint8Array> {
+    return decode(Buffer.from(jpegData), userOpts);
+  }
+}

@@ -1,8 +1,8 @@
 var fs = require('fs'),
-  path = require('path'),
-  jpeg = require('../index');
+  path = require('path');
 import { expect, assert } from 'chai';
 import 'mocha';
+import { YASS } from '../index';
 
 function fixture(name: string) {
   return fs.readFileSync(path.join(__dirname, 'fixtures', name));
@@ -17,7 +17,7 @@ describe('Test the embedding of various sizes of messages', () => {
       height: 180,
     };
     const embed_obj = { str: 'hello', key: 'AE0F', q: 3 };
-    var jpegImageData = jpeg.encode(rawImageData, 50, embed_obj);
+    var jpegImageData = YASS.encode(rawImageData, 50, embed_obj);
     expect(jpegImageData.width).to.equal(320);
     expect(jpegImageData.height).to.equal(180);
     var expected = fixture('grumpycat-50.jpg');
@@ -29,7 +29,7 @@ describe('Test the embedding of various sizes of messages', () => {
 describe('Test extracting previously embedded messages', () => {
   it('should complete without error and properly read message', () => {
     let fbuf = fs.readFileSync('./test/output_jpgs/grumpy_hello.jpg');
-    var imageData = jpeg.decode(fbuf, { withKey: { key: 'AE0F', q: 3 } });
+    var imageData = YASS.decode(fbuf, { withKey: { key: 'AE0F', q: 3 } });
     expect(imageData.message).to.equal('hello');
   });
 });
