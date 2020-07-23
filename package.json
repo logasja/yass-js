@@ -1,6 +1,6 @@
 {
   "name": "yass-js",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "A steganographic encoder and decoder built on top of a jpeg library.",
   "main": "lib/index.js",
   "types": "lib/index.type.ds",
