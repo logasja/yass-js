@@ -12,7 +12,7 @@ const SUPER_LARGE_JPEG_BASE64 =
   '/9j/wJ39sP//DlKWvX+7xPlXkJa9f7v8DoDVAAD//zb6QAEAI2cBv3P/r4ADpX8Jf14AAAAAgCPE+VeQlr1/uwCAAAAVALNOjAGP2lIS';
 
 const SUPER_LARGE_JPEG_BUFFER = Buffer.from(SUPER_LARGE_JPEG_BASE64, 'base64');
-describe('Jpeg tests', () => {
+describe('Jpeg original tests', () => {
   it('should be able to decode a JPEG', function () {
     var jpegData = fixture('grumpycat.jpg');
     var rawImageData = JPEG.decode(jpegData);
@@ -288,4 +288,40 @@ describe('Jpeg tests', () => {
     var jpegData = fixture('grumpycat.jpg');
     expect(() => JPEG.decode(jpegData)).not.to.throw();
   }).timeout(3000);
+});
+
+describe('Jpeg new tests with JFIF et cetera.', () => {
+  it('should be able to decode a JFIF', function () {
+    var jpegData = fixture('cat.jfif');
+    var rawImageData = JPEG.decode(jpegData);
+    var expected = fixture('cat.jpg');
+    var rawExpectedImageData = JPEG.decode(expected, {
+      useTArray: true,
+      formatAsRGBA: true,
+    });
+    expect(rawImageData.data).to.deep.equal(rawExpectedImageData.data);
+  });
+
+  it('should be able to decode a JFIF', function () {
+    var jpegData = fixture('person.jfif');
+    var rawImageData = JPEG.decode(jpegData);
+    var expected = fixture('person.jpg');
+    var rawExpectedImageData = JPEG.decode(expected, {
+      useTArray: true,
+      formatAsRGBA: true,
+    });
+    expect(rawImageData.data).to.deep.equal(rawExpectedImageData.data);
+  });
+
+  it('should be able to decode JFIF and encode to jpg', function () {
+    var jpegData = fixture('person.jfif');
+    var rawImageData = JPEG.decode(jpegData, {
+      useTArray: true,
+      formatAsRGBA: true,
+    });
+    var jpegImageData = JPEG.encode(rawImageData);
+
+    var expected = fixture('person.jpg');
+    expect(jpegImageData.data).to.deep.equal(expected);
+  });
 });

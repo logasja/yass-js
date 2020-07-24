@@ -13,9 +13,13 @@ export class YASS {
 
   static decode(
     jpegData: Buffer | Uint8Array,
-    userOpts?: DecodePrefs
+    userOpts: DecodePrefs = {}
   ): RawImageData<Buffer | Uint8Array> {
-    return decode(Buffer.from(jpegData), userOpts);
+    var opts: DecodePrefs = {
+      ...userOpts,
+      ...{ formatAsRGBA: true, useTArray: true },
+    };
+    return decode(Buffer.from(jpegData), opts);
   }
 }
 
