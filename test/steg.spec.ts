@@ -77,7 +77,7 @@ describe('Test the embedding of various sizes of messages', () => {
   });
 
   it('should encode message into a GAN jpg person image', () => {
-    var frameData = fixture('person.jpg');
+    var frameData = fixture('person.jfif');
     frameData = YASS.decode(frameData);
     var rawImageData = {
       data: frameData.data,
