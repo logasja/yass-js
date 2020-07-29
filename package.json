@@ -51,7 +51,8 @@
     "prettier": "^2.0.5",
     "ts-node": "^8.10.2",
     "typescript": "^3.9.7",
-    "uglify-js": "^3.10.0"
+    "uglify-js": "^3.10.0",
+    "xdne-js": "^1.0.0"
   },
   "husky": {
     "hooks": {
