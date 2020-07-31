@@ -630,7 +630,8 @@ class JPEGEncoder {
     fdtbl: Float32Array,
     DC: number,
     HTDC: Uint8Array[],
-    HTAC: Uint8Array[]
+    HTAC: Uint8Array[],
+    IS_CHANGE_DCT: boolean
   ) {
     var EOB = HTAC[0x00];
     var M16zeroes = HTAC[0xf0];
@@ -639,7 +640,11 @@ class JPEGEncoder {
     var I63 = 63;
     var I64 = 0x40;
     // Calculate the quantized DCT 8x8 block
-    var DU_DCT = this.fDCTQuant(CDU, fdtbl);
+    if (!IS_CHANGE_DCT) {
+      var DU_DCT = this.fDCTQuant(CDU, fdtbl);
+    } else {
+      var DU_DCT = CDU;
+    }
 
     // Encode parts of message here only in Y channel
     if (CDU == this.YDU && this.message != '') {
@@ -712,7 +717,8 @@ class JPEGEncoder {
 
   encode(
     image: RawImageData<Buffer | Uint8Array>,
-    quality: number // image data object
+    quality: number, // image data object,
+    new_dct?: Float32Array // the whole dct table to be substitued
   ) {
     var time_start = new Date().getTime();
 
@@ -807,26 +813,42 @@ class JPEGEncoder {
         }
 
         // Where values are converted to DCT rep and bytes are written to the buffer
-        DCY = this.processDU(
-          this.YDU,
-          this.fdtbl_Y,
-          DCY,
-          this.YDC_HT!,
-          this.YAC_HT!
-        );
+
+        if (new_dct != undefined) {
+          DCY = this.processDU(
+            new_dct,
+            this.fdtbl_Y,
+            DCY,
+            this.YDC_HT!,
+            this.YAC_HT!,
+            true
+          );
+        } else {
+          DCY = this.processDU(
+            this.YDU,
+            this.fdtbl_Y,
+            DCY,
+            this.YDC_HT!,
+            this.YAC_HT!,
+            false
+          );
+        }
+
         DCU = this.processDU(
           this.UDU,
           this.fdtbl_UV,
           DCU,
           this.UVDC_HT!,
-          this.UVAC_HT!
+          this.UVAC_HT!,
+          false
         );
         DCV = this.processDU(
           this.VDU,
           this.fdtbl_UV,
           DCV,
           this.UVDC_HT!,
-          this.UVAC_HT!
+          this.UVAC_HT!,
+          false
         );
         x += 32;
       }
@@ -895,11 +917,12 @@ class JPEGEncoder {
 export function encode(
   imgData: RawImageData<Buffer | Uint8Array>,
   qu?: number,
-  message?: EmbedMessage
+  message?: EmbedMessage,
+  new_dct?: Float32Array
 ) {
   if (typeof qu === 'undefined') qu = 50;
   var encoder = new JPEGEncoder(qu, message);
-  var data = encoder.encode(imgData, qu);
+  var data = encoder.encode(imgData, qu, new_dct);
   return {
     data: data,
     width: imgData.width,
