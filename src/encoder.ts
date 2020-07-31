@@ -196,18 +196,45 @@ class JPEGEncoder {
 				  24, 35, 55, 64, 81,104,113, 92,
 				  49, 64, 78, 87,103,121,120,101,
 				  72, 92, 95, 98,112,100,103, 99
-			  ]);
+        ]);
+
+    // Y channel quantization table for facebook at a quality of 71
+    var YQT_fb_71 = Uint8Array.from([
+          9, 6, 6, 9, 16, 23, 30, 35,
+          7, 7, 8, 11, 15, 34, 35, 32,
+          8, 8, 9, 14, 23, 33, 40, 32,
+          8, 10, 13, 17, 30, 50, 46, 36, 
+          10, 13, 21, 32, 39, 63, 60, 45, 
+          14, 20, 32, 37, 47, 60, 66, 53,
+          28, 37, 45, 50, 60, 70, 70, 59, 
+          42, 53, 55, 57, 65, 58, 60, 57
+        ]);
+
+    // Y channel quantization table for facebook at a quality of 82
+    var YQT_fb_82 = Uint8Array.from([
+          5, 4, 3, 5, 8, 13, 16, 20,
+          4, 4, 4, 6, 8, 19, 19, 18, 
+          4, 4, 5, 8, 13, 18, 22, 18,
+          4, 5, 7, 9, 16, 28, 26, 20,
+          6, 7, 12, 18, 22, 35, 33, 25,
+          8, 11, 18, 20, 26, 33, 36, 29,
+          16, 20, 25, 28, 33, 39, 38, 32,
+          23, 29, 30, 31, 36, 32, 33, 32 
+        ]);
+        
+    
 
     // Build zig-zagged quant table for Y
     for (var i = 0; i < 64; i++) {
-      var t = ffloor((YQT[i] * sf + 50) / 100);
-      // Clamp between 1 and 255
-      if (t < 1) {
-        t = 1;
-      } else if (t > 255) {
-        t = 255;
-      }
-      this.YTable[JPEGEncoder.ZigZag[i]] = t;
+      // var t = ffloor((YQT[i] * sf + 50) / 100);
+      // // Clamp between 1 and 255
+      // if (t < 1) {
+      //   t = 1;
+      // } else if (t > 255) {
+      //   t = 255;
+      // }
+      // this.YTable[JPEGEncoder.ZigZag[i]] = t;
+      this.YTable[JPEGEncoder.ZigZag[i]] = YQT_fb_71[i];
     }
     // Initial quantization table for U and V channels
     // prettier-ignore
