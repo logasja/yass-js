@@ -60,11 +60,20 @@ export class QIM {
       // Quantization taken from https://en.wikipedia.org/wiki/Quantization_(signal_processing)
       var r_k = delta * Math.floor(qDCT_block[k] / delta + 0.5);
       r_k = Math.abs(r_k);
+      var r_k = delta * Math.floor(qDCT_block[k] / delta + 0.5);
+      r_k = Math.abs(r_k);
       // console.log(r_k);
-
-      if (r_k > t) {
-        out.push({ idx: k, rk: r_k, t: false });
-      } else if (r_k === t) {
+      if (r_k >= t - 1) {
+        if (r_k < Math.floor(t + (delta + 4) / 8)) {
+          qDCT_block[k] = qDCT_block[k] > 0 ? t - 2 : 2 - t;
+        } else if (r_k <= t + delta / 4 + 2) {
+          qDCT_block[k] =
+            qDCT_block[k] > 0 ? t + delta / 4 + 3 : -(t + delta / 4 + 3);
+          out.push({ idx: k, rk: r_k, t: false });
+        } else {
+          out.push({ idx: k, rk: r_k, t: false });
+        }
+      } else {
         out.push({ idx: k, rk: r_k, t: true });
       }
       // console.log(k);
