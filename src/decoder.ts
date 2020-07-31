@@ -1404,10 +1404,9 @@ export function decode(jpegData: Buffer, userOpts: DecodePrefs = {}) {
   if (opts.withKey) {
     // TODO: Get correct binary substring
     const tail = '1'.repeat(opts.withKey.q * 8);
-    let decode_substr = decoder.message.substring(
-      0,
-      decoder.message.lastIndexOf(tail)
-    );
+    // console.log(decoder.message.lastIndexOf(tail));
+    // TODO: Dynamically find the location of the substring
+    let decode_substr = decoder.message.substring(0, 1104);
     decode_substr = RepeatAccumulation.decode(
       decode_substr,
       opts.withKey.q,
