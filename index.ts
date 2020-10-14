@@ -6,9 +6,10 @@ export class YASS {
   static encode(
     imgData: RawImageData<Buffer | Uint8Array>,
     qu?: number,
-    message?: EmbedMessage
+    message?: EmbedMessage,
+    QTs?: string | { Y: Uint8Array; UV: Uint8Array }
   ): { data: Buffer | Uint8Array; width: number; height: number } {
-    return encode(imgData, qu, message);
+    return encode(imgData, qu, message, QTs);
   }
 
   static decode(
@@ -26,9 +27,10 @@ export class YASS {
 export class JPEG {
   static encode(
     imgData: RawImageData<Buffer | Uint8Array>,
-    qu?: number
+    qu?: number,
+    QTs?: string | { Y: Uint8Array; UV: Uint8Array }
   ): { data: Buffer | Uint8Array; width: number; height: number } {
-    return encode(imgData, qu);
+    return encode(imgData, qu, undefined, QTs);
   }
 
   static decode(

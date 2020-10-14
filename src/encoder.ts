@@ -39,6 +39,7 @@ import { RawImageData, EmbedMessage } from './types';
 import { QIM } from './qim';
 import { binarize, addMessageTail } from './utils';
 import { RepeatAccumulation } from './repeat_accumulate';
+import { predefined } from './predefinedQTs';
 
 // var btoa =
 //   btoa ||
@@ -50,9 +51,18 @@ var fround = Math.round;
 var ffloor = Math.floor;
 
 class JPEGEncoder {
-  constructor(quality: number, message?: EmbedMessage) {
-    var time_start = new Date().getTime();
+  constructor(
+    quality: number,
+    message?: EmbedMessage,
+    QTs?: { Y: Uint8Array; UV: Uint8Array }
+  ) {
     if (!quality) quality = 50;
+    if (QTs) {
+      quality = 100;
+      this.gYQT = QTs.Y;
+      this.gUVQT = QTs.UV;
+      this.QTprovided = true;
+    }
     // Create tables
     this.initCharLookupTable();
     this.initHuffmanTbl();
@@ -75,6 +85,32 @@ class JPEGEncoder {
 
   // Variables for data embedding
   message: string;
+
+  // Arrays for initial YUV tables
+  QTprovided: boolean = false;
+  // prettier-ignore
+  gYQT = Uint8Array.from([
+    16, 11, 10, 16, 24, 40, 51, 61,
+    12, 12, 14, 19, 26, 58, 60, 55,
+    14, 13, 16, 24, 40, 57, 69, 56,
+    14, 17, 22, 29, 51, 87, 80, 62,
+    18, 22, 37, 56, 68,109,103, 77,
+    24, 35, 55, 64, 81,104,113, 92,
+    49, 64, 78, 87,103,121,120,101,
+    72, 92, 95, 98,112,100,103, 99
+  ]);
+
+  // prettier-ignore
+  gUVQT = Uint8Array.from([
+    17, 18, 24, 47, 99, 99, 99, 99,
+    18, 21, 26, 66, 99, 99, 99, 99,
+    24, 26, 56, 99, 99, 99, 99, 99,
+    47, 66, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99,
+    99, 99, 99, 99, 99, 99, 99, 99
+  ]);
 
   // Calculated quantization tables
   YTable = new Uint8Array(0x40);
@@ -186,50 +222,38 @@ class JPEGEncoder {
   // Calculate quantization tables based on the given quality
   initQuantTables(sf: number) {
     // Initial quantization table for Y channel
-    // prettier-ignore
-    var YQT = Uint8Array.from([
-				  16, 11, 10, 16, 24, 40, 51, 61,
-				  12, 12, 14, 19, 26, 58, 60, 55,
-				  14, 13, 16, 24, 40, 57, 69, 56,
-				  14, 17, 22, 29, 51, 87, 80, 62,
-				  18, 22, 37, 56, 68,109,103, 77,
-				  24, 35, 55, 64, 81,104,113, 92,
-				  49, 64, 78, 87,103,121,120,101,
-				  72, 92, 95, 98,112,100,103, 99
-			  ]);
-
-    // Build zig-zagged quant table for Y
-    for (var i = 0; i < 64; i++) {
-      var t = ffloor((YQT[i] * sf + 50) / 100);
-      // Clamp between 1 and 255
-      if (t < 1) {
-        t = 1;
-      } else if (t > 255) {
-        t = 255;
-      }
-      this.YTable[JPEGEncoder.ZigZag[i]] = t;
-    }
+    var YQT = this.gYQT;
     // Initial quantization table for U and V channels
-    // prettier-ignore
-    var UVQT = Uint8Array.from([
-				  17, 18, 24, 47, 99, 99, 99, 99,
-				  18, 21, 26, 66, 99, 99, 99, 99,
-				  24, 26, 56, 99, 99, 99, 99, 99,
-				  47, 66, 99, 99, 99, 99, 99, 99,
-				  99, 99, 99, 99, 99, 99, 99, 99,
-				  99, 99, 99, 99, 99, 99, 99, 99,
-				  99, 99, 99, 99, 99, 99, 99, 99,
-				  99, 99, 99, 99, 99, 99, 99, 99
-        ]);
-    // Build zig-zagged quant table for U and V channels
-    for (var j = 0; j < 64; j++) {
-      var u = ffloor((UVQT[j] * sf + 50) / 100);
-      if (u < 1) {
-        u = 1;
-      } else if (u > 255) {
-        u = 255;
+    var UVQT = this.gUVQT;
+
+    if (this.QTprovided) {
+      // Build zig-zagged quant table for Y
+      for (var i = 0; i < 64; i++) {
+        this.YTable[JPEGEncoder.ZigZag[i]] = YQT[i];
+        this.UVTable[JPEGEncoder.ZigZag[i]] = UVQT[i];
       }
-      this.UVTable[JPEGEncoder.ZigZag[j]] = u;
+    } else {
+      // Build zig-zagged quant table for Y
+      for (var i = 0; i < 64; i++) {
+        var t = ffloor((YQT[i] * sf + 50) / 100);
+        // Clamp between 1 and 255
+        if (t < 1) {
+          t = 1;
+        } else if (t > 255) {
+          t = 255;
+        }
+        this.YTable[JPEGEncoder.ZigZag[i]] = t;
+      }
+      // Build zig-zagged quant table for U and V channels
+      for (var j = 0; j < 64; j++) {
+        var u = ffloor((UVQT[j] * sf + 50) / 100);
+        if (u < 1) {
+          u = 1;
+        } else if (u > 255) {
+          u = 255;
+        }
+        this.UVTable[JPEGEncoder.ZigZag[j]] = u;
+      }
     }
 
     // consts for calculations
@@ -895,11 +919,21 @@ class JPEGEncoder {
 export function encode(
   imgData: RawImageData<Buffer | Uint8Array>,
   qu?: number,
-  message?: EmbedMessage
+  message?: EmbedMessage,
+  QTs?: string | { Y: Uint8Array; UV: Uint8Array }
 ) {
-  if (typeof qu === 'undefined') qu = 50;
-  var encoder = new JPEGEncoder(qu, message);
-  var data = encoder.encode(imgData, qu);
+  var data;
+  if (QTs) {
+    if (typeof QTs === 'string') {
+      QTs = predefined[QTs];
+    }
+    var encoder = new JPEGEncoder(100, message, QTs);
+    data = encoder.encode(imgData, 100);
+  } else {
+    if (typeof qu === 'undefined') qu = 50;
+    var encoder = new JPEGEncoder(qu, message);
+    data = encoder.encode(imgData, qu);
+  }
   return {
     data: data,
     width: imgData.width,

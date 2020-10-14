@@ -289,39 +289,3 @@ describe('Jpeg original tests', () => {
     expect(() => JPEG.decode(jpegData)).not.to.throw();
   }).timeout(3000);
 });
-
-describe('Jpeg new tests with JFIF et cetera.', () => {
-  it('should be able to decode a JFIF', function () {
-    var jpegData = fixture('cat.jfif');
-    var rawImageData = JPEG.decode(jpegData);
-    var expected = fixture('cat.jpg');
-    var rawExpectedImageData = JPEG.decode(expected, {
-      useTArray: true,
-      formatAsRGBA: true,
-    });
-    expect(rawImageData.data).to.deep.equal(rawExpectedImageData.data);
-  });
-
-  it('should be able to decode a JFIF', function () {
-    var jpegData = fixture('person.jfif');
-    var rawImageData = JPEG.decode(jpegData);
-    var expected = fixture('person.jpg');
-    var rawExpectedImageData = JPEG.decode(expected, {
-      useTArray: true,
-      formatAsRGBA: true,
-    });
-    expect(rawImageData.data).to.deep.equal(rawExpectedImageData.data);
-  });
-
-  it('should be able to decode JFIF and encode to jpg', function () {
-    var jpegData = fixture('person.jfif');
-    var rawImageData = JPEG.decode(jpegData, {
-      useTArray: true,
-      formatAsRGBA: true,
-    });
-    var jpegImageData = JPEG.encode(rawImageData);
-
-    var expected = fixture('person.jpg');
-    expect(jpegImageData.data).to.deep.equal(expected);
-  });
-});
